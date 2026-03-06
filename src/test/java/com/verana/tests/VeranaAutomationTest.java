@@ -123,8 +123,8 @@ public class VeranaAutomationTest {
         // STEP 5: Submit the form (clicks the inner "Add DID" confirm button)
         System.out.println("[Test] STEP 5: Submitting Add DID form...");
         manageDIDsPage.submitDIDForm();
-        WaitUtils.sleep(1500);
-        System.out.println("[Test] STEP 5 DONE: Form submitted.");
+        System.out.println("[Test] STEP 5 DONE: Form submitted. Waiting 5s for Keplr to register transaction...");
+        WaitUtils.sleep(5000);
 
         // STEP 6: Click Keplr extension icon in toolbar, then click Approve.
         //

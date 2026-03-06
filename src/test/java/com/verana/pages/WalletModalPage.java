@@ -123,9 +123,34 @@ public class WalletModalPage {
         java.util.Properties config = com.verana.utils.DriverManager.getConfig();
 
         // Configurable offsets (pixels from window edges)
-        int iconXFromRight = Integer.parseInt(config.getProperty("keplr.icon.x.from.right", "130"));
+        int iconXFromRight = Integer.parseInt(config.getProperty("keplr.icon.x.from.right", "190"));
         int iconYFromTop = Integer.parseInt(config.getProperty("keplr.icon.y.from.top", "60"));
         int popupRenderWait = Integer.parseInt(config.getProperty("keplr.popup.render.wait.ms", "2500"));
+
+        // ── STEP 0: Bring Chrome to the foreground ──
+        // Robot clicks go to whatever is visually on screen. Chrome may be behind
+        // the terminal or other windows, so we must activate it first.
+        System.out.println("[Keplr-TX] STEP 0: Bringing Chrome to foreground...");
+        try {
+            Runtime.getRuntime().exec(new String[]{
+                    "osascript", "-e", "tell application \"Google Chrome\" to activate"
+            });
+            WaitUtils.sleep(1500); // Wait for window to come to front
+        } catch (Exception e) {
+            System.out.println("[Keplr-TX] Could not activate Chrome via AppleScript: " + e.getMessage());
+        }
+        // Maximize to ensure consistent position
+        try {
+            driver.manage().window().maximize();
+            WaitUtils.sleep(500);
+        } catch (Exception ignored) {}
+        // Dismiss any macOS system dialogs by pressing Escape
+        try {
+            Robot dismissRobot = new Robot();
+            dismissRobot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE);
+            dismissRobot.keyRelease(java.awt.event.KeyEvent.VK_ESCAPE);
+            WaitUtils.sleep(300);
+        } catch (Exception ignored) {}
 
         // Get browser window position and size
         org.openqa.selenium.Point windowPos = driver.manage().window().getPosition();
@@ -169,15 +194,15 @@ public class WalletModalPage {
 
             // ── STEP 3: Click the Approve button ──
             // The Keplr popup drops down from the icon. The popup is ~350px wide.
-            // Approve button is a wide cyan button at the bottom-right area of the popup.
+            // Approve button is a wide cyan button at the bottom of the popup.
             // Try multiple positions to maximize chance of hitting it.
             int[][] approvePositions = {
                 // {x offset from right edge of window, y offset from top of window}
-                {200, 600},  // center of popup, near bottom
-                {150, 620},  // slightly right, slightly lower
-                {250, 600},  // slightly left
-                {200, 580},  // slightly higher
-                {180, 640},  // lower
+                {80, 570},   // right side of popup, near bottom (Approve button)
+                {120, 570},  // slightly more center
+                {80, 550},   // slightly higher
+                {100, 590},  // slightly lower
+                {150, 570},  // more center
             };
 
             for (int[] pos : approvePositions) {
