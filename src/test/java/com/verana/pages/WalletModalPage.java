@@ -107,157 +107,208 @@ public class WalletModalPage {
     }
 
     /**
-     * PRIMARY METHOD for transaction approval after DID form submission.
-     *
-     * Keplr v0.13.x (Manifest V3) shows transaction approvals in the browser-action
-     * popup (the dropdown from clicking the Keplr extension icon in the toolbar).
-     * This popup is NOT a browser window — Selenium cannot access it through window
-     * handles, tabs, or DOM. The ONLY way to interact with it is OS-level mouse clicks.
+     * Approves the Keplr transaction after DID form submission.
      *
      * Strategy:
-     * 1. Use Robot to click the Keplr extension icon in the browser toolbar
-     * 2. Wait for the "Confirm Transaction" popup to appear
-     * 3. Use Robot to click the "Approve" button at the bottom of the popup
+     * 1. Record current window handles
+     * 2. Wait for a new Keplr popup window to appear
+     * 3. Switch to it, find "Approve" button, click it
+     * 4. If no popup window appears, open chrome-extension://popup.html in a new tab
+     * 5. Switch back to the original window
      */
-    public boolean approveKeplrTransaction(String originalHandle, int totalWaitSeconds) {
-        java.util.Properties config = com.verana.utils.DriverManager.getConfig();
-
-        // Configurable offsets (pixels from window edges)
-        int iconXFromRight = Integer.parseInt(config.getProperty("keplr.icon.x.from.right", "190"));
-        int iconYFromTop = Integer.parseInt(config.getProperty("keplr.icon.y.from.top", "60"));
-        int popupRenderWait = Integer.parseInt(config.getProperty("keplr.popup.render.wait.ms", "2500"));
-
-        // ── STEP 0: Bring Chrome to the foreground ──
-        // Robot clicks go to whatever is visually on screen. Chrome may be behind
-        // the terminal or other windows, so we must activate it first.
-        System.out.println("[Keplr-TX] STEP 0: Bringing Chrome to foreground...");
+    public boolean approveKeplrTransaction(int waitSeconds) {
+        String originalHandle;
+        Set<String> handlesBefore;
         try {
-            Runtime.getRuntime().exec(new String[]{
-                    "osascript", "-e", "tell application \"Google Chrome\" to activate"
-            });
-            WaitUtils.sleep(1500); // Wait for window to come to front
+            originalHandle = driver.getWindowHandle();
+            handlesBefore = driver.getWindowHandles();
         } catch (Exception e) {
-            System.out.println("[Keplr-TX] Could not activate Chrome via AppleScript: " + e.getMessage());
-        }
-        // Maximize to ensure consistent position
-        try {
-            driver.manage().window().maximize();
-            WaitUtils.sleep(500);
-        } catch (Exception ignored) {}
-        // Dismiss any macOS system dialogs by pressing Escape
-        try {
-            Robot dismissRobot = new Robot();
-            dismissRobot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE);
-            dismissRobot.keyRelease(java.awt.event.KeyEvent.VK_ESCAPE);
-            WaitUtils.sleep(300);
-        } catch (Exception ignored) {}
-
-        // Get browser window position and size
-        org.openqa.selenium.Point windowPos = driver.manage().window().getPosition();
-        org.openqa.selenium.Dimension windowSize = driver.manage().window().getSize();
-
-        int winX = windowPos.getX();
-        int winY = windowPos.getY();
-        int winW = windowSize.getWidth();
-        int winH = windowSize.getHeight();
-
-        System.out.println("[Keplr-TX] Window: pos=(" + winX + "," + winY + ") size=" + winW + "x" + winH);
-
-        try {
-            Robot robot = new Robot();
-
-            // ── STEP 1: Click the Keplr extension icon in the toolbar ──
-            int iconScreenX = winX + winW - iconXFromRight;
-            int iconScreenY = winY + iconYFromTop;
-            System.out.println("[Keplr-TX] STEP 1: Clicking Keplr icon at (" + iconScreenX + "," + iconScreenY + ")");
-
-            robot.mouseMove(iconScreenX, iconScreenY);
-            WaitUtils.sleep(300);
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-
-            // ── STEP 2: Wait for the popup to render ──
-            System.out.println("[Keplr-TX] STEP 2: Waiting " + popupRenderWait + "ms for popup...");
-            WaitUtils.sleep(popupRenderWait);
-
-            // Take a screenshot to see what happened (captures OS screen via Robot)
-            try {
-                java.awt.Rectangle screenRect = new java.awt.Rectangle(
-                        java.awt.Toolkit.getDefaultToolkit().getScreenSize());
-                java.awt.image.BufferedImage screenCapture = robot.createScreenCapture(screenRect);
-                java.io.File dest = new java.io.File(System.getProperty("user.dir"), "robot_screen_after_icon_click.png");
-                javax.imageio.ImageIO.write(screenCapture, "PNG", dest);
-                System.out.println("[Keplr-TX] Screenshot saved: " + dest.getAbsolutePath());
-            } catch (Exception screenshotErr) {
-                System.out.println("[Keplr-TX] Screenshot failed: " + screenshotErr.getMessage());
-            }
-
-            // ── STEP 3: Click the Approve button ──
-            // The Keplr popup drops down from the icon. The popup is ~350px wide.
-            // Approve button is a wide cyan button at the bottom of the popup.
-            // Try multiple positions to maximize chance of hitting it.
-            int[][] approvePositions = {
-                // {x offset from right edge of window, y offset from top of window}
-                {80, 570},   // right side of popup, near bottom (Approve button)
-                {120, 570},  // slightly more center
-                {80, 550},   // slightly higher
-                {100, 590},  // slightly lower
-                {150, 570},  // more center
-            };
-
-            for (int[] pos : approvePositions) {
-                int approveX = winX + winW - pos[0];
-                int approveY = winY + pos[1];
-                System.out.println("[Keplr-TX] STEP 3: Trying Approve click at (" + approveX + "," + approveY + ")");
-
-                robot.mouseMove(approveX, approveY);
-                WaitUtils.sleep(200);
-                robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-                WaitUtils.sleep(500);
-
-                // Check if the page shows any sign of transaction processing
-                // (the popup would close and the DID page would show progress)
-                try {
-                    String pageText = (String) ((JavascriptExecutor) driver).executeScript(
-                            "return document.body ? document.body.innerText.substring(0, 200) : '';");
-                    if (pageText != null && (pageText.toLowerCase().contains("transaction")
-                            || pageText.toLowerCase().contains("success")
-                            || pageText.toLowerCase().contains("broadcasting"))) {
-                        System.out.println("[Keplr-TX] Page indicates transaction in progress!");
-                        break;
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            // Take screenshot after approve attempt
-            try {
-                java.awt.Rectangle screenRect = new java.awt.Rectangle(
-                        java.awt.Toolkit.getDefaultToolkit().getScreenSize());
-                java.awt.image.BufferedImage screenCapture = robot.createScreenCapture(screenRect);
-                java.io.File dest = new java.io.File(System.getProperty("user.dir"), "robot_screen_after_approve_click.png");
-                javax.imageio.ImageIO.write(screenCapture, "PNG", dest);
-                System.out.println("[Keplr-TX] Screenshot saved: " + dest.getAbsolutePath());
-            } catch (Exception screenshotErr) {
-                System.out.println("[Keplr-TX] Screenshot failed: " + screenshotErr.getMessage());
-            }
-
-            System.out.println("[Keplr-TX] Approve click attempts done.");
-
-            // Move mouse to center to avoid interfering
-            robot.mouseMove(winX + winW / 2, winY + winH / 2);
-
-            return true;
-
-        } catch (AWTException e) {
-            System.out.println("[Keplr-TX] Robot failed: " + e.getMessage());
+            System.out.println("[Keplr-TX] Cannot get window handles: " + e.getMessage());
             return false;
         }
+
+        System.out.println("[Keplr-TX] Waiting for Keplr popup window (up to " + waitSeconds + "s)...");
+        System.out.println("[Keplr-TX] Current windows: " + handlesBefore.size());
+
+        // PHASE 1: Wait for Keplr to open a new popup window
+        long deadline = System.currentTimeMillis() + (waitSeconds * 1000L);
+        String keplrPopupHandle = null;
+
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Set<String> currentHandles = driver.getWindowHandles();
+                for (String handle : currentHandles) {
+                    if (!handlesBefore.contains(handle)) {
+                        keplrPopupHandle = handle;
+                        break;
+                    }
+                }
+                if (keplrPopupHandle != null) break;
+            } catch (Exception ignored) {}
+            WaitUtils.sleep(200);
+        }
+
+        // If a new window appeared, switch to it and click Approve
+        if (keplrPopupHandle != null) {
+            System.out.println("[Keplr-TX] New popup window detected. Switching...");
+            driver.switchTo().window(keplrPopupHandle);
+            WaitUtils.sleep(1000);
+
+            // Unlock if needed
+            if (isWalletLocked()) {
+                System.out.println("[Keplr-TX] Wallet locked. Unlocking...");
+                attemptAutoUnlockIfLocked();
+                WaitUtils.sleep(1500);
+            }
+
+            // Find and click Approve
+            boolean clicked = clickApproveButton(10);
+            if (clicked) {
+                System.out.println("[Keplr-TX] Approve clicked in popup window!");
+                WaitUtils.sleep(1000);
+                // Wait for popup to close, then switch back
+                waitForWindowToClose(keplrPopupHandle, 5);
+                switchBackTo(originalHandle);
+                return true;
+            } else {
+                System.out.println("[Keplr-TX] Could not find Approve button in popup window.");
+                dumpPageDiagnostics();
+                switchBackTo(originalHandle);
+            }
+        } else {
+            System.out.println("[Keplr-TX] No popup window appeared.");
+        }
+
+        // PHASE 2: Fallback — open Keplr popup.html in a new tab using driver.get()
+        // window.open() doesn't properly load extension pages in MV3.
+        // Instead, open a new tab via Selenium and navigate with driver.get().
+        System.out.println("[Keplr-TX] Fallback: Opening Keplr popup.html in a new tab via driver.get()...");
+        java.util.Properties config = com.verana.utils.DriverManager.getConfig();
+        String extensionId = config.getProperty("keplr.extension.id", "dmkamcknogkgcdfhhbddcghachkejeap").trim();
+        String keplrPopupUrl = "chrome-extension://" + extensionId + "/popup.html";
+
+        String keplrTab = null;
+        try {
+            // Open a new tab using Selenium's built-in method
+            driver.switchTo().newWindow(org.openqa.selenium.WindowType.TAB);
+            keplrTab = driver.getWindowHandle();
+            System.out.println("[Keplr-TX] New tab opened. Navigating to: " + keplrPopupUrl);
+
+            // Navigate to the extension popup URL using driver.get()
+            driver.get(keplrPopupUrl);
+            WaitUtils.sleep(3000); // Give extension popup time to fully render
+
+            System.out.println("[Keplr-TX] Current URL: " + driver.getCurrentUrl());
+            System.out.println("[Keplr-TX] Page title: " + driver.getTitle());
+
+            // Unlock if needed
+            if (isWalletLocked()) {
+                System.out.println("[Keplr-TX] Wallet locked in tab. Unlocking...");
+                attemptAutoUnlockIfLocked();
+                WaitUtils.sleep(1500);
+            }
+
+            // Log what's on the page for debugging
+            try {
+                String pageText = (String) ((JavascriptExecutor) driver).executeScript(
+                        "return document.body ? document.body.innerText.substring(0, 500) : 'NO BODY';");
+                System.out.println("[Keplr-TX] Page content: " + pageText);
+            } catch (Exception ignored) {}
+
+            // Find and click Approve
+            boolean clicked = clickApproveButton(10);
+            if (clicked) {
+                System.out.println("[Keplr-TX] Approve clicked in Keplr tab!");
+                WaitUtils.sleep(1000);
+            } else {
+                System.out.println("[Keplr-TX] Approve button not found. Dumping diagnostics...");
+                dumpPageDiagnostics();
+            }
+
+            // Close the Keplr tab and switch back
+            try {
+                driver.close();
+            } catch (Exception ignored) {}
+            switchBackTo(originalHandle);
+            return clicked;
+        } catch (Exception e) {
+            System.out.println("[Keplr-TX] Fallback failed: " + e.getMessage());
+            e.printStackTrace();
+            // Clean up tab if it was opened
+            if (keplrTab != null) {
+                try { driver.close(); } catch (Exception ignored) {}
+            }
+        }
+
+        switchBackTo(originalHandle);
+        return false;
     }
 
     /**
-     * LEGACY METHOD: Waits for Keplr popup, switches to it, clicks Approve FAST,
-     * then switches back. Optimized for the 3-4 second popup window.
+     * Finds and clicks the Approve button using WebDriverWait.
+     * Tries multiple XPath strategies.
+     */
+    private boolean clickApproveButton(int waitSeconds) {
+        long deadline = System.currentTimeMillis() + (waitSeconds * 1000L);
+
+        while (System.currentTimeMillis() < deadline) {
+            // Strategy 1: Button containing "Approve" text
+            WebElement btn = findVisibleButton(By.xpath(
+                    "//button[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', " +
+                    "'abcdefghijklmnopqrstuvwxyz'), 'approve')]"));
+
+            // Strategy 2: Any positive action button (confirm, sign, etc.)
+            if (btn == null) {
+                btn = findVisibleButton(keplrActionButton);
+            }
+
+            if (btn != null) {
+                String btnText = "";
+                try { btnText = btn.getText().trim(); } catch (Exception ignored) {}
+                System.out.println("[Keplr-TX] Found button: \"" + btnText + "\"");
+
+                try {
+                    ((JavascriptExecutor) driver).executeScript(
+                            "arguments[0].scrollIntoView({block:'center'});", btn);
+                } catch (Exception ignored) {}
+
+                // Click it
+                try {
+                    btn.click();
+                    System.out.println("[Keplr-TX] Clicked via element.click()");
+                    return true;
+                } catch (Exception e1) {
+                    try {
+                        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", btn);
+                        System.out.println("[Keplr-TX] Clicked via JS click");
+                        return true;
+                    } catch (Exception e2) {
+                        System.out.println("[Keplr-TX] Click failed: " + e2.getMessage());
+                    }
+                }
+            }
+
+            WaitUtils.sleep(500);
+        }
+        return false;
+    }
+
+    /**
+     * Finds a visible, enabled button matching the given locator.
+     */
+    private WebElement findVisibleButton(By locator) {
+        try {
+            List<WebElement> buttons = driver.findElements(locator);
+            for (WebElement btn : buttons) {
+                if (btn.isDisplayed() && btn.isEnabled()) return btn;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Waits for Keplr popup, switches to it, clicks Approve, then switches back.
+     * Used during wallet connection in setUp.
      */
     public int approveInKeplrPopup(int maxActions, int waitSeconds) {
         String originalHandle;
