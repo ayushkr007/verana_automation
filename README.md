@@ -1,21 +1,26 @@
 # Verana DID Automation (Selenium + Java + Keplr)
 
-This project automates the full Verana DID flow in one run:
-1. Open Verana dashboard.
-2. Connect Keplr wallet (if not already connected).
-3. Handle Keplr popups (connect/approve/sign).
-4. Open Manage DIDs.
-5. Create DID with unique identifier.
+This project automates the Verana DID flow in one run:
+1. Open Manage DIDs page.
+2. Click Add DID.
+3. Fill DID identifier and year.
+4. Submit and approve transaction in Keplr.
+5. Capture screenshot.
 
 The setup is built to avoid your old issue where Selenium used a temporary Chrome without Keplr.
 
 ## Why this works
 
-Selenium starts Chrome with a **persistent profile path** from `config.properties`:
+Selenium uses a **persistent Chrome profile** from `config.properties`:
 - `chrome.user.data.dir`
 - `chrome.profile.directory`
 
 Keplr is installed one time in that profile and remains available in every automation run.
+
+For repeated runs without entering password each time, Selenium can attach to an already-open Chrome session:
+- `chrome.attach.to.running=true`
+- `chrome.debugger.address=127.0.0.1:9222`
+- `keplr.auto.unlock.enabled=true`
 
 ## Prerequisites
 
@@ -59,17 +64,47 @@ Inside that Chrome window:
 4. Open Verana app once and complete first connect approval.
 5. Close Chrome fully.
 
-### 3. Run the automation
+### 3. No-password repeated runs (recommended)
+
+Start reusable Chrome once:
+
+```bash
+cd /Users/ayushkumar2109/Desktop/verana_automation
+./start_keplr_session.sh
+```
+
+Store Keplr password once in macOS Keychain:
+
+```bash
+cd /Users/ayushkumar2109/Desktop/verana_automation
+./save_keplr_password.sh
+```
+
+In that Chrome:
+1. Open Keplr and unlock once.
+2. Keep Chrome open.
+3. Optional: in Keplr settings, set auto-lock timeout to a high value.
+
+Now run automation any number of times (it attaches to same Chrome session):
 
 ```bash
 cd /Users/ayushkumar2109/Desktop/verana_automation
 ./run_once.sh
 ```
 
-Alternative:
+### 4. Single-run mode (fresh Chrome each run)
+
+If you want the old behavior, set:
+
+```properties
+chrome.attach.to.running=false
+```
+
+Then run:
 
 ```bash
-mvn -Dtest=VeranaAutomationTest test
+cd /Users/ayushkumar2109/Desktop/verana_automation
+./run_once.sh
 ```
 
 ## Main files
@@ -77,6 +112,8 @@ mvn -Dtest=VeranaAutomationTest test
 - `config.properties`: runtime config
 - `launch_chrome.sh`: opens Chrome with Selenium profile for one-time Keplr setup
 - `run_once.sh`: executes the test
+- `start_keplr_session.sh`: starts reusable Chrome session for no-password repeated runs
+- `save_keplr_password.sh`: saves Keplr password in macOS Keychain (one-time)
 - `src/test/java/com/verana/tests/VeranaAutomationTest.java`: end-to-end flow
 - `src/test/java/com/verana/pages/WalletModalPage.java`: Keplr popup approvals
 - `src/test/java/com/verana/utils/DriverManager.java`: Chrome profile-based driver startup
@@ -84,16 +121,23 @@ mvn -Dtest=VeranaAutomationTest test
 ## Flow details
 
 During run:
-1. `DashboardPage.assertKeplrInjected()` checks extension is present (`window.keplr`).
-2. If wallet is disconnected, script clicks `Connect Wallet` and chooses `Keplr`.
-3. If Keplr is locked, enter password in popup; script waits for unlock screen to clear and continues.
-4. Keplr popup handler clicks safe positive actions only (`Unlock`, `Next`, `Approve`, `Connect`, `Confirm`, `Sign`).
-5. After form fill, script takes screenshot and exits (no DID submit).
+1. Opens `https://app.testnet.verana.network/did` after your sign-in flow.
+2. Clicks `Add DID`, fills DID identifier and registration period `1`.
+3. Submits Add DID and attempts Keplr approval actions (`Approve`, `Confirm`, `Sign`, etc.).
+4. If Keplr is locked, script auto-fills password from env/Keychain and clicks Unlock.
+5. Waits for transaction success confirmation.
+6. Captures screenshot at `target/screenshots`.
 
 ## Troubleshooting
 
+- `Unable to attach to running Chrome at 127.0.0.1:9222`:
+  Start `./start_keplr_session.sh` first and keep that Chrome open.
+- Keplr still asks password:
+  Set `keplr.auto.unlock.enabled=true`, save password once via `./save_keplr_password.sh`, then rerun.
+- Verana page feels slow to open:
+  Keep `page.load.strategy=eager` and tune `did.add.button.wait.seconds` in `config.properties`.
 - `user data directory is already in use`:
-  Close all Chrome windows, then rerun.
+  You started another Chrome with the same profile. Keep one session only.
 - Keplr popup not found:
   Re-open `./launch_chrome.sh`, verify Keplr exists in that exact profile path.
 - `Keplr was not injected`:
