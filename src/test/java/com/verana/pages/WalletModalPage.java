@@ -3,22 +3,22 @@ package com.verana.pages;
 import com.verana.utils.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.NoSuchWindowException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 
-import java.util.ArrayList;
+import java.awt.*;
+import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.Set;
-import java.time.Duration;
 
 /**
  * WalletModalPage
  *
- * Handles the "Select your wallet" modal that appears after clicking "Connect
- * Wallet".
- * Selects Keplr and then handles one or more Keplr approval popups.
+ * Handles the "Select your wallet" modal and Keplr extension popup interactions.
+ * Optimized for SPEED — Keplr popups only stay open for ~3-4 seconds.
  */
 public class WalletModalPage {
 
@@ -27,429 +27,624 @@ public class WalletModalPage {
 
     // ---- Locators ----
 
-    // Modal title to confirm the modal is open
     private final By modalTitle = By.xpath(
             "//h2[contains(text(),'Select your wallet')] | //div[contains(text(),'Select your wallet')]");
 
-    // Keplr button inside the modal
     private final By keplrButton = By.xpath(
             "//button[@title='Keplr'] | //button[.//span[contains(text(),'Keplr')]] | " +
                     "//div[contains(@class,'wallet')][.//span[contains(text(),'Keplr')]]");
 
-    // Positive Keplr actions we are willing to click.
-    // Intentionally excludes reject/cancel.
+    // Approve/Confirm/Sign/Connect buttons (excludes reject/cancel)
     private final By keplrActionButton = By.xpath(
             "//button[not(@disabled) and " +
                     "not(contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reject')) and " +
                     "not(contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel')) and " +
                     "(" +
-                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'unlock') or " +
-                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next') or " +
                     "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'approve') or " +
                     "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'connect') or " +
                     "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'confirm') or " +
                     "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign') or " +
                     "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'allow') or " +
-                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'grant')" +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'grant') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'unlock')" +
                     ")]");
-    // Keplr confirm transaction context for DID add flow.
-    private final By keplrConfirmTxContext = By.xpath(
-            "//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'confirm transaction') and " +
-                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'msgadddid')]");
-    private final By keplrApproveTextButton = By.xpath(
-            "//*[self::button or @role='button' or self::div][not(@disabled) and " +
-                    "not(contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reject')) and " +
-                    "not(contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel')) and " +
-                    "(" +
-                    "normalize-space()='Approve' or " +
-                    ".//*[normalize-space()='Approve'] or " +
-                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), ' approve')" +
-                    ")]");
-    // User-provided Keplr approve footer container selector.
-    private final By keplrApproveContainerByClass = By.cssSelector("div.sc-gUAEMC.jxcvNv");
-    private final By keplrApproveButtonInContainer = By.xpath(
-            ".//*[self::button or @role='button' or self::div]" +
-                    "[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'approve')]");
+
     private final By keplrPasswordInput = By.xpath(
             "//input[@type='password' or contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'password')]");
+    private final By keplrUnlockButton = By.xpath(
+            "//button[not(@disabled) and (" +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'unlock') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue') or " +
+                    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')" +
+                    ")]");
+
+    private final boolean autoUnlockEnabled;
+    private final String autoUnlockEnvVar;
+    private final String autoUnlockConfigPassword;
+    private String cachedKeplrPassword;
+    private boolean loggedPasswordMissing;
+    private boolean loggedPasswordLoaded;
 
     public WalletModalPage(WebDriver driver) {
         this.driver = driver;
         this.wait = new WaitUtils(driver);
+        java.util.Properties config = com.verana.utils.DriverManager.getConfig();
+        this.autoUnlockEnabled = Boolean.parseBoolean(config.getProperty("keplr.auto.unlock.enabled", "true"));
+        this.autoUnlockEnvVar = config.getProperty("keplr.password.env.var", "KEPLR_PASSWORD").trim();
+        this.autoUnlockConfigPassword = config.getProperty("keplr.password", "").trim();
     }
 
-    /**
-     * Waits for the wallet selection modal to appear, then clicks Keplr.
-     */
+    // =========================================================================
+    // PUBLIC API
+    // =========================================================================
+
     public void selectKeplr() {
-        System.out.println("[WalletModalPage] Waiting for wallet selection modal...");
+        System.out.println("[Keplr] Waiting for wallet selection modal...");
         try {
             wait.waitForVisible(modalTitle, 15);
-            System.out.println("[WalletModalPage] Wallet modal is visible.");
         } catch (Exception e) {
-            System.out.println("[WalletModalPage] Modal title not found, looking for Keplr button directly...");
+            System.out.println("[Keplr] Modal title not found, looking for Keplr button directly...");
         }
-
         WebElement keplr = wait.waitForClickable(keplrButton, 15);
         keplr.click();
-        System.out.println("[WalletModalPage] Clicked 'Keplr' wallet option.");
+        System.out.println("[Keplr] Clicked 'Keplr' wallet option.");
     }
 
     /**
-     * Handles required Keplr popups for initial wallet connection.
+     * Clicks Approve in the CURRENT window (caller already switched to Keplr popup).
+     * Use this when you handle window switching yourself in the test.
      */
-    public void approveConnectionAndTransactionRequests() {
-        // Initial connect flows often open 1-3 popups (chain add, connect, approve).
-        handleKeplrPopups(true, 3, Integer.parseInt(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.connection.popup.wait.seconds", "20")), 2);
+    public boolean clickApproveInCurrentWindow(int waitSeconds) {
+        if (isWalletLocked()) {
+            System.out.println("[Keplr] Wallet locked in current window. Unlocking...");
+            attemptAutoUnlockIfLocked();
+            WaitUtils.sleep(1000);
+        }
+        return fastClickApproveButton(waitSeconds);
     }
 
     /**
-     * Handles optional Keplr popup after submitting DID creation transaction.
+     * PRIMARY METHOD for transaction approval after DID form submission.
+     *
+     * Keplr v0.13.x (Manifest V3) shows transaction approvals in the browser-action
+     * popup (the dropdown from clicking the Keplr extension icon in the toolbar).
+     * This popup is NOT a browser window — Selenium cannot access it through window
+     * handles, tabs, or DOM. The ONLY way to interact with it is OS-level mouse clicks.
+     *
+     * Strategy:
+     * 1. Use Robot to click the Keplr extension icon in the browser toolbar
+     * 2. Wait for the "Confirm Transaction" popup to appear
+     * 3. Use Robot to click the "Approve" button at the bottom of the popup
      */
-    public void approveTransactionRequestIfPresent() {
-        handleKeplrPopups(false, 2, Integer.parseInt(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.optional.popup.wait.seconds", "2")), 2);
-    }
+    public boolean approveKeplrTransaction(String originalHandle, int totalWaitSeconds) {
+        java.util.Properties config = com.verana.utils.DriverManager.getConfig();
 
-    /**
-     * Fast optional check for a transaction approval popup.
-     * Returns true if at least one approval action was clicked.
-     */
-    public boolean tryApproveTransactionRequestQuick() {
-        int quickWait = Integer.parseInt(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.transaction.quick.popup.wait.seconds", "2"));
+        // Configurable offsets (pixels from window edges)
+        int iconXFromRight = Integer.parseInt(config.getProperty("keplr.icon.x.from.right", "130"));
+        int iconYFromTop = Integer.parseInt(config.getProperty("keplr.icon.y.from.top", "60"));
+        int popupRenderWait = Integer.parseInt(config.getProperty("keplr.popup.render.wait.ms", "2500"));
 
-        // First try direct Selenium contexts (same-window Keplr style or extension window).
-        if (tryApproveInAnySeleniumContext(quickWait)) {
-            return true;
-        }
+        // Get browser window position and size
+        org.openqa.selenium.Point windowPos = driver.manage().window().getPosition();
+        org.openqa.selenium.Dimension windowSize = driver.manage().window().getSize();
 
-        // First try native Keplr window flow (same style as wallet sign-in popup).
-        if (attemptNativeApproveFallback(quickWait)) {
-            return true;
-        }
+        int winX = windowPos.getX();
+        int winY = windowPos.getY();
+        int winW = windowSize.getWidth();
+        int winH = windowSize.getHeight();
 
-        int handled = handleKeplrPopups(false, 1, quickWait,
-                Integer.parseInt(
-                        com.verana.utils.DriverManager.getConfig().getProperty("keplr.optional.popup.wait.seconds", "1")));
-        return handled > 0;
-    }
+        System.out.println("[Keplr-TX] Window: pos=(" + winX + "," + winY + ") size=" + winW + "x" + winH);
 
-    /**
-     * Handles required Keplr popup after submitting DID creation transaction.
-     */
-    public void approveTransactionRequest() {
-        int waitSeconds = Integer.parseInt(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.transaction.popup.wait.seconds", "20"));
+        try {
+            Robot robot = new Robot();
 
-        // Main path: click approve from any Selenium-visible context first.
-        if (tryApproveInAnySeleniumContext(waitSeconds)) {
-            return;
-        }
+            // ── STEP 1: Click the Keplr extension icon in the toolbar ──
+            int iconScreenX = winX + winW - iconXFromRight;
+            int iconScreenY = winY + iconYFromTop;
+            System.out.println("[Keplr-TX] STEP 1: Clicking Keplr icon at (" + iconScreenX + "," + iconScreenY + ")");
 
-        // Main path for your flow: approve in the same Keplr-style popup window.
-        if (attemptNativeApproveFallback(waitSeconds)) {
-            return;
-        }
+            robot.mouseMove(iconScreenX, iconScreenY);
+            WaitUtils.sleep(300);
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-        // Fallback if Selenium can directly access the approval context.
-        handleKeplrPopups(true, 2, waitSeconds,
-                Integer.parseInt(
-                        com.verana.utils.DriverManager.getConfig().getProperty("keplr.optional.popup.wait.seconds", "1")));
-    }
+            // ── STEP 2: Wait for the popup to render ──
+            System.out.println("[Keplr-TX] STEP 2: Waiting " + popupRenderWait + "ms for popup...");
+            WaitUtils.sleep(popupRenderWait);
 
-    private int handleKeplrPopups(boolean popupRequired, int maxPopups, int firstPopupWaitSeconds, int subsequentWaitSeconds) {
-        String mainWindowHandle = driver.getWindowHandle();
-        int handledPopups = 0;
+            // Take a screenshot to see what happened (captures OS screen via Robot)
+            try {
+                java.awt.Rectangle screenRect = new java.awt.Rectangle(
+                        java.awt.Toolkit.getDefaultToolkit().getScreenSize());
+                java.awt.image.BufferedImage screenCapture = robot.createScreenCapture(screenRect);
+                java.io.File dest = new java.io.File(System.getProperty("user.dir"), "robot_screen_after_icon_click.png");
+                javax.imageio.ImageIO.write(screenCapture, "PNG", dest);
+                System.out.println("[Keplr-TX] Screenshot saved: " + dest.getAbsolutePath());
+            } catch (Exception screenshotErr) {
+                System.out.println("[Keplr-TX] Screenshot failed: " + screenshotErr.getMessage());
+            }
 
-        while (handledPopups < maxPopups) {
-            int timeoutSeconds = (popupRequired && handledPopups == 0)
-                    ? firstPopupWaitSeconds
-                    : subsequentWaitSeconds;
+            // ── STEP 3: Click the Approve button ──
+            // The Keplr popup drops down from the icon. The popup is ~350px wide.
+            // Approve button is a wide cyan button at the bottom-right area of the popup.
+            // Try multiple positions to maximize chance of hitting it.
+            int[][] approvePositions = {
+                // {x offset from right edge of window, y offset from top of window}
+                {200, 600},  // center of popup, near bottom
+                {150, 620},  // slightly right, slightly lower
+                {250, 600},  // slightly left
+                {200, 580},  // slightly higher
+                {180, 640},  // lower
+            };
 
-            String approvalHandle = waitForApprovalContext(mainWindowHandle, timeoutSeconds);
-            if (approvalHandle == null) {
-                if (popupRequired && handledPopups == 0) {
-                    if (attemptNativeApproveFallback(firstPopupWaitSeconds)) {
-                        handledPopups++;
-                        popupRequired = false;
-                        continue;
+            for (int[] pos : approvePositions) {
+                int approveX = winX + winW - pos[0];
+                int approveY = winY + pos[1];
+                System.out.println("[Keplr-TX] STEP 3: Trying Approve click at (" + approveX + "," + approveY + ")");
+
+                robot.mouseMove(approveX, approveY);
+                WaitUtils.sleep(200);
+                robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+                robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+                WaitUtils.sleep(500);
+
+                // Check if the page shows any sign of transaction processing
+                // (the popup would close and the DID page would show progress)
+                try {
+                    String pageText = (String) ((JavascriptExecutor) driver).executeScript(
+                            "return document.body ? document.body.innerText.substring(0, 200) : '';");
+                    if (pageText != null && (pageText.toLowerCase().contains("transaction")
+                            || pageText.toLowerCase().contains("success")
+                            || pageText.toLowerCase().contains("broadcasting"))) {
+                        System.out.println("[Keplr-TX] Page indicates transaction in progress!");
+                        break;
                     }
-                    throw new RuntimeException("Keplr approval did not appear for required step.");
-                }
+                } catch (Exception ignored) {}
+            }
+
+            // Take screenshot after approve attempt
+            try {
+                java.awt.Rectangle screenRect = new java.awt.Rectangle(
+                        java.awt.Toolkit.getDefaultToolkit().getScreenSize());
+                java.awt.image.BufferedImage screenCapture = robot.createScreenCapture(screenRect);
+                java.io.File dest = new java.io.File(System.getProperty("user.dir"), "robot_screen_after_approve_click.png");
+                javax.imageio.ImageIO.write(screenCapture, "PNG", dest);
+                System.out.println("[Keplr-TX] Screenshot saved: " + dest.getAbsolutePath());
+            } catch (Exception screenshotErr) {
+                System.out.println("[Keplr-TX] Screenshot failed: " + screenshotErr.getMessage());
+            }
+
+            System.out.println("[Keplr-TX] Approve click attempts done.");
+
+            // Move mouse to center to avoid interfering
+            robot.mouseMove(winX + winW / 2, winY + winH / 2);
+
+            return true;
+
+        } catch (AWTException e) {
+            System.out.println("[Keplr-TX] Robot failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * LEGACY METHOD: Waits for Keplr popup, switches to it, clicks Approve FAST,
+     * then switches back. Optimized for the 3-4 second popup window.
+     */
+    public int approveInKeplrPopup(int maxActions, int waitSeconds) {
+        String originalHandle;
+        Set<String> handlesBefore;
+        try {
+            originalHandle = driver.getWindowHandle();
+            handlesBefore = driver.getWindowHandles();
+        } catch (Exception e) {
+            System.out.println("[Keplr] Cannot get window handles: " + e.getMessage());
+            return 0;
+        }
+
+        System.out.println("[Keplr] Waiting for Keplr popup (up to " + waitSeconds + "s)...");
+        int totalClicked = 0;
+        long overallDeadline = System.currentTimeMillis() + (waitSeconds * 1000L);
+
+        // ── PHASE 1: Wait for Keplr auto-popup window, click FAST ──
+        while (totalClicked < maxActions && System.currentTimeMillis() < overallDeadline) {
+
+            String keplrPopupHandle = waitForNewWindow(handlesBefore, overallDeadline);
+
+            if (keplrPopupHandle == null) {
+                System.out.println("[Keplr] Phase 1: No popup window detected.");
                 break;
             }
 
-            driver.switchTo().window(approvalHandle);
-            boolean isMainContext = approvalHandle.equals(mainWindowHandle);
-            System.out.println("[WalletModalPage] Keplr approval context found: " + approvalHandle +
-                    (isMainContext ? " (main window)" : ""));
+            driver.switchTo().window(keplrPopupHandle);
+            System.out.println("[Keplr] Phase 1: Switched to popup.");
 
-            boolean clickedAction = approveCurrentPopup(approvalHandle, !isMainContext);
-            if (!clickedAction) {
-                throw new RuntimeException(
-                        "Keplr popup opened but no actionable button was found (Approve/Connect/Sign/Confirm).");
+            // Minimal wait — just enough for DOM to render
+            WaitUtils.sleep(500);
+
+            if (isWalletLocked()) {
+                System.out.println("[Keplr] Wallet locked. Unlocking...");
+                attemptAutoUnlockIfLocked();
+                WaitUtils.sleep(1500);
             }
 
-            if (!isMainContext) {
-                wait.waitUntilWindowClosed(approvalHandle, 3);
-                if (driver.getWindowHandles().contains(mainWindowHandle)) {
-                    driver.switchTo().window(mainWindowHandle);
-                } else {
-                    Set<String> remaining = driver.getWindowHandles();
-                    if (!remaining.isEmpty()) {
-                        mainWindowHandle = remaining.iterator().next();
-                        driver.switchTo().window(mainWindowHandle);
-                    }
+            // FAST click — try everything rapidly
+            boolean clicked = fastClickApproveButton(8);
+
+            if (clicked) {
+                totalClicked++;
+                System.out.println("[Keplr] Phase 1: Approve clicked! (total: " + totalClicked + ")");
+                WaitUtils.sleep(500);
+            } else {
+                dumpPageDiagnostics();
+                System.out.println("[Keplr] Phase 1: Could not click Approve.");
+            }
+
+            waitForWindowToClose(keplrPopupHandle, 3);
+            handlesBefore = driver.getWindowHandles();
+            switchBackTo(originalHandle);
+        }
+
+        // ── PHASE 2: Open popup.html in a new tab as fallback ──
+        if (totalClicked == 0 && System.currentTimeMillis() < overallDeadline) {
+            System.out.println("[Keplr] Phase 2: Opening popup.html in a new tab...");
+
+            java.util.Properties config = com.verana.utils.DriverManager.getConfig();
+            String extensionId = config.getProperty("keplr.extension.id", "dmkamcknogkgcdfhhbddcghachkejeap").trim();
+            String keplrPopupUrl = "chrome-extension://" + extensionId + "/popup.html";
+
+            String keplrTab = null;
+            try {
+                Set<String> existingHandles = driver.getWindowHandles();
+                ((JavascriptExecutor) driver).executeScript("window.open('about:blank','_blank');");
+                keplrTab = wait.waitForNewWindow(existingHandles, 3);
+                driver.switchTo().window(keplrTab);
+            } catch (Exception e) {
+                System.out.println("[Keplr] Phase 2: Failed to open tab: " + e.getMessage());
+                switchBackTo(originalHandle);
+                return totalClicked;
+            }
+
+            try {
+                driver.get(keplrPopupUrl);
+                System.out.println("[Keplr] Phase 2: Navigated to " + keplrPopupUrl);
+                WaitUtils.sleep(1500);
+
+                if (isWalletLocked()) {
+                    attemptAutoUnlockIfLocked();
+                    WaitUtils.sleep(1500);
                 }
+
+                int remaining = (int) ((overallDeadline - System.currentTimeMillis()) / 1000);
+                boolean clicked = fastClickApproveButton(Math.max(remaining, 5));
+
+                if (clicked) {
+                    totalClicked++;
+                    System.out.println("[Keplr] Phase 2: Approve clicked!");
+                    WaitUtils.sleep(500);
+                } else {
+                    dumpPageDiagnostics();
+                    System.out.println("[Keplr] Phase 2: Could not click Approve.");
+                }
+            } catch (Exception e) {
+                System.out.println("[Keplr] Phase 2 error: " + e.getMessage());
             }
 
-            handledPopups++;
-            popupRequired = false;
-            WaitUtils.sleep(70);
+            try {
+                if (keplrTab != null && driver.getWindowHandles().contains(keplrTab)) {
+                    driver.switchTo().window(keplrTab);
+                    driver.close();
+                }
+            } catch (Exception ignored) {}
+            switchBackTo(originalHandle);
         }
 
-        if (driver.getWindowHandles().contains(mainWindowHandle)) {
-            driver.switchTo().window(mainWindowHandle);
-        }
-        if (handledPopups == 0) {
-            System.out.println("[WalletModalPage] No Keplr popup appeared for this step.");
-        } else {
-            System.out.println("[WalletModalPage] Completed Keplr popup approvals. Total popups handled: " + handledPopups);
-        }
-        return handledPopups;
+        switchBackTo(originalHandle);
+        System.out.println("[Keplr] Done. Total actions clicked: " + totalClicked);
+        return totalClicked;
     }
 
-
-    private String waitForApprovalContext(String mainWindowHandle, int timeoutSeconds) {
-        long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-        String originalHandle = driver.getWindowHandle();
+    public boolean tryAutoUnlockInOpenContexts(int seconds) {
+        long deadline = System.currentTimeMillis() + (Math.max(1, seconds) * 1000L);
+        String originalHandle;
+        try {
+            originalHandle = driver.getWindowHandle();
+        } catch (Exception e) {
+            return false;
+        }
 
         while (System.currentTimeMillis() < deadline) {
-            String context = findApprovalContext(mainWindowHandle);
-            if (context != null) {
-                if (driver.getWindowHandles().contains(originalHandle)) {
-                    driver.switchTo().window(originalHandle);
-                }
-                return context;
-            }
-            WaitUtils.sleep(80);
-        }
-
-        if (driver.getWindowHandles().contains(originalHandle)) {
-            driver.switchTo().window(originalHandle);
-        }
-        return null;
-    }
-
-    private String findApprovalContext(String mainWindowHandle) {
-        Set<String> handles = driver.getWindowHandles();
-        if (handles.isEmpty()) {
-            return null;
-        }
-
-        List<String> orderedHandles = new ArrayList<>();
-        for (String handle : handles) {
-            if (!handle.equals(mainWindowHandle)) {
-                orderedHandles.add(handle);
-            }
-        }
-        if (handles.contains(mainWindowHandle)) {
-            orderedHandles.add(mainWindowHandle);
-        }
-
-        for (String handle : orderedHandles) {
+            Set<String> handles;
             try {
-                driver.switchTo().window(handle);
-                if (isWalletLocked() || isLikelyKeplrContext() || hasApproveIndicatorsInCurrentContext()
-                        || findClickableActionButton() != null) {
-                    return handle;
-                }
-            } catch (Exception ignored) {
+                handles = driver.getWindowHandles();
+            } catch (Exception e) {
+                return false;
             }
+
+            for (String handle : handles) {
+                try {
+                    driver.switchTo().window(handle);
+                    if (isWalletLocked() && attemptAutoUnlockIfLocked()) {
+                        WaitUtils.sleep(140);
+                        if (!isWalletLocked()) {
+                            switchBackTo(originalHandle);
+                            return true;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            WaitUtils.sleep(120);
+        }
+
+        switchBackTo(originalHandle);
+        return false;
+    }
+
+    public boolean tryApproveTransactionRequestQuick() {
+        int quickWait = Integer.parseInt(
+                com.verana.utils.DriverManager.getConfig().getProperty("keplr.transaction.quick.popup.wait.seconds", "2"));
+        return tryApproveInAnyWindow(quickWait);
+    }
+
+    public void approveTransactionRequest() {
+        int waitSeconds = Integer.parseInt(
+                com.verana.utils.DriverManager.getConfig().getProperty("keplr.transaction.popup.wait.seconds", "20"));
+        if (!tryApproveInAnyWindow(waitSeconds)) {
+            throw new RuntimeException("Keplr approval popup did not appear within " + waitSeconds + " seconds.");
+        }
+    }
+
+    // =========================================================================
+    // CORE: Fast popup detection and Approve button click
+    // =========================================================================
+
+    /**
+     * Polls for a new window handle every 100ms (fast).
+     */
+    private String waitForNewWindow(Set<String> handlesBefore, long deadlineMillis) {
+        while (System.currentTimeMillis() < deadlineMillis) {
+            try {
+                Set<String> currentHandles = driver.getWindowHandles();
+                for (String handle : currentHandles) {
+                    if (!handlesBefore.contains(handle)) {
+                        return handle;
+                    }
+                }
+            } catch (Exception ignored) {}
+            WaitUtils.sleep(100); // Fast polling — every 100ms
         }
         return null;
     }
 
-    private boolean tryApproveInAnySeleniumContext(int waitSeconds) {
-        long deadline = System.currentTimeMillis() + (Math.max(1, waitSeconds) * 1000L);
-        String originalHandle = driver.getWindowHandle();
+    /**
+     * FAST approve: find button and blast ALL click methods immediately.
+     * No slow verification between attempts. The popup is only alive for 3-4s.
+     * We fire every click method we have, then check if it worked.
+     */
+    private boolean fastClickApproveButton(int waitSeconds) {
+        long deadline = System.currentTimeMillis() + (waitSeconds * 1000L);
 
+        while (System.currentTimeMillis() < deadline) {
+            WebElement btn = findApproveButtonFast();
+
+            if (btn != null) {
+                String btnText = "";
+                try { btnText = btn.getText().trim(); } catch (Exception ignored) {}
+                System.out.println("[Keplr] Found button: \"" + btnText + "\". Blasting all click methods...");
+
+                // Scroll into view
+                try {
+                    ((JavascriptExecutor) driver).executeScript(
+                            "arguments[0].scrollIntoView({block:'center',behavior:'instant'});", btn);
+                } catch (Exception ignored) {}
+
+                // BLAST: Fire ALL click strategies rapidly — no waiting between them
+                // Strategy 1: Selenium Actions (real mouse events)
+                try {
+                    new Actions(driver).moveToElement(btn).click().perform();
+                    System.out.println("[Keplr] Fired: Actions click");
+                } catch (Exception e) {
+                    System.out.println("[Keplr] Actions failed: " + e.getMessage());
+                }
+
+                // Strategy 2: element.click()
+                try {
+                    btn.click();
+                    System.out.println("[Keplr] Fired: element.click()");
+                } catch (Exception e) {
+                    System.out.println("[Keplr] element.click() failed: " + e.getMessage());
+                }
+
+                // Strategy 3: JavaScript .click()
+                try {
+                    ((JavascriptExecutor) driver).executeScript("arguments[0].click();", btn);
+                    System.out.println("[Keplr] Fired: JS click");
+                } catch (Exception ignored) {}
+
+                // Strategy 4: Keyboard Enter
+                try {
+                    ((JavascriptExecutor) driver).executeScript("arguments[0].focus();", btn);
+                    btn.sendKeys(Keys.ENTER);
+                    System.out.println("[Keplr] Fired: Enter key");
+                } catch (Exception ignored) {}
+
+                // Strategy 5: Robot class — OS-level native mouse click (always trusted)
+                try {
+                    org.openqa.selenium.Point loc = btn.getLocation();
+                    org.openqa.selenium.Dimension size = btn.getSize();
+                    // Get browser window position
+                    org.openqa.selenium.Point windowPos = driver.manage().window().getPosition();
+                    // Button center in screen coordinates (approximate — includes browser chrome ~85px)
+                    int screenX = windowPos.getX() + loc.getX() + size.getWidth() / 2;
+                    int screenY = windowPos.getY() + loc.getY() + size.getHeight() / 2 + 85;
+                    Robot robot = new Robot();
+                    robot.mouseMove(screenX, screenY);
+                    robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+                    robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+                    System.out.println("[Keplr] Fired: Robot click at (" + screenX + "," + screenY + ")");
+                } catch (Exception e) {
+                    System.out.println("[Keplr] Robot click failed: " + e.getMessage());
+                }
+
+                // Strategy 6: CDP Input.dispatchMouseEvent
+                try {
+                    org.openqa.selenium.Point loc = btn.getLocation();
+                    org.openqa.selenium.Dimension size = btn.getSize();
+                    int clickX = loc.getX() + size.getWidth() / 2;
+                    int clickY = loc.getY() + size.getHeight() / 2;
+                    org.openqa.selenium.chrome.ChromeDriver cdpDriver = (org.openqa.selenium.chrome.ChromeDriver) driver;
+                    java.util.Map<String, Object> params = new java.util.HashMap<>();
+                    params.put("type", "mousePressed");
+                    params.put("x", clickX);
+                    params.put("y", clickY);
+                    params.put("button", "left");
+                    params.put("clickCount", 1);
+                    cdpDriver.executeCdpCommand("Input.dispatchMouseEvent", params);
+                    params.put("type", "mouseReleased");
+                    cdpDriver.executeCdpCommand("Input.dispatchMouseEvent", params);
+                    System.out.println("[Keplr] Fired: CDP click at (" + clickX + "," + clickY + ")");
+                } catch (Exception e) {
+                    System.out.println("[Keplr] CDP click failed: " + e.getMessage());
+                }
+
+                // Now check if ANY of those worked
+                WaitUtils.sleep(500);
+
+                // Check: button gone = success
+                try {
+                    if (!btn.isDisplayed()) {
+                        System.out.println("[Keplr] VERIFIED: button disappeared — click worked!");
+                        return true;
+                    }
+                } catch (org.openqa.selenium.StaleElementReferenceException e) {
+                    System.out.println("[Keplr] VERIFIED: button became stale — click worked!");
+                    return true;
+                } catch (Exception e) {
+                    System.out.println("[Keplr] VERIFIED: button inaccessible — click worked!");
+                    return true;
+                }
+
+                // Check: can we still find any approve button?
+                if (findApproveButtonFast() == null) {
+                    System.out.println("[Keplr] VERIFIED: no approve button found — click worked!");
+                    return true;
+                }
+
+                System.out.println("[Keplr] Button still present after all strategies. Retrying...");
+            }
+
+            WaitUtils.sleep(200);
+        }
+        return false;
+    }
+
+    /**
+     * FAST button finder — no WebDriverWait timeouts, instant checks only.
+     */
+    private WebElement findApproveButtonFast() {
+        // Strategy 1: Direct XPath for "Approve" button (instant, no wait)
+        try {
+            List<WebElement> buttons = driver.findElements(By.xpath(
+                    "//button[contains(translate(normalize-space(.), " +
+                    "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'approve')]"));
+            for (WebElement btn : buttons) {
+                if (btn.isDisplayed() && btn.isEnabled()) return btn;
+            }
+        } catch (Exception ignored) {}
+
+        // Strategy 2: Any positive action button
+        try {
+            List<WebElement> buttons = driver.findElements(keplrActionButton);
+            for (WebElement btn : buttons) {
+                if (btn.isDisplayed() && btn.isEnabled()) return btn;
+            }
+        } catch (Exception ignored) {}
+
+        // Strategy 3: JS search including shadow DOM
+        try {
+            WebElement btn = (WebElement) ((JavascriptExecutor) driver).executeScript(
+                    "var actions = ['approve','confirm','sign','connect','allow','next'];" +
+                    "var exclude = ['reject','cancel','deny','close','back'];" +
+                    "function search(root) {" +
+                    "  var els = root.querySelectorAll('button, [role=\"button\"]');" +
+                    "  for (var i = 0; i < els.length; i++) {" +
+                    "    var txt = (els[i].innerText || els[i].textContent || '').trim().toLowerCase();" +
+                    "    if (!txt) continue;" +
+                    "    var bad = false;" +
+                    "    for (var j = 0; j < exclude.length; j++) { if (txt.indexOf(exclude[j]) >= 0) { bad = true; break; } }" +
+                    "    if (bad) continue;" +
+                    "    for (var j = 0; j < actions.length; j++) {" +
+                    "      if (txt.indexOf(actions[j]) >= 0) {" +
+                    "        var rect = els[i].getBoundingClientRect();" +
+                    "        if (rect.width > 0 && rect.height > 0 && !els[i].disabled) return els[i];" +
+                    "      }" +
+                    "    }" +
+                    "  }" +
+                    "  var all = root.querySelectorAll('*');" +
+                    "  for (var i = 0; i < all.length; i++) {" +
+                    "    if (all[i].shadowRoot) {" +
+                    "      var found = search(all[i].shadowRoot);" +
+                    "      if (found) return found;" +
+                    "    }" +
+                    "  }" +
+                    "  return null;" +
+                    "}" +
+                    "return search(document);");
+            if (btn != null) return btn;
+        } catch (Exception ignored) {}
+
+        return null;
+    }
+
+    /**
+     * Tries to approve in any currently open window.
+     */
+    private boolean tryApproveInAnyWindow(int waitSeconds) {
+        String originalHandle;
+        try {
+            originalHandle = driver.getWindowHandle();
+        } catch (Exception e) {
+            return false;
+        }
+
+        long deadline = System.currentTimeMillis() + (waitSeconds * 1000L);
         while (System.currentTimeMillis() < deadline) {
             Set<String> handles = driver.getWindowHandles();
             for (String handle : handles) {
                 try {
                     driver.switchTo().window(handle);
-                    if (tryApproveInCurrentContext()) {
-                        if (driver.getWindowHandles().contains(originalHandle)) {
-                            driver.switchTo().window(originalHandle);
+                    String url = driver.getCurrentUrl();
+                    if (url != null && url.contains("chrome-extension://")) {
+                        if (isWalletLocked()) {
+                            attemptAutoUnlockIfLocked();
+                            WaitUtils.sleep(500);
                         }
-                        return true;
+                        if (fastClickApproveButton(3)) {
+                            switchBackTo(originalHandle);
+                            return true;
+                        }
                     }
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) {}
             }
-            WaitUtils.sleep(120);
+            WaitUtils.sleep(200);
         }
 
-        if (driver.getWindowHandles().contains(originalHandle)) {
-            driver.switchTo().window(originalHandle);
-        }
+        switchBackTo(originalHandle);
         return false;
     }
 
-    private boolean tryApproveInCurrentContext() {
-        if (isWalletLocked()) {
-            return false;
-        }
-
-        if (clickApproveFromConfirmTransactionLayout()) {
-            System.out.println("[WalletModalPage] Clicked Keplr action from Confirm Transaction layout.");
-            return true;
-        }
-
-        if (clickApproveFromProvidedSelector()) {
-            System.out.println("[WalletModalPage] Clicked Keplr action from provided selector: div.sc-gUAEMC.jxcvNv");
-            return true;
-        }
-
-        String shadowLabel = clickShadowDomActionButton();
-        if (shadowLabel != null) {
-            System.out.println("[WalletModalPage] Clicked Keplr action (shadow DOM): " + shadowLabel);
-            return true;
-        }
-
-        WebElement actionButton = findClickableActionButton();
-        if (actionButton != null) {
-            String label = actionButton.getText().trim();
-            click(actionButton);
-            System.out.println("[WalletModalPage] Clicked Keplr action: " + (label.isEmpty() ? "<no-label>" : label));
-            return true;
-        }
-        return false;
-    }
-
-    private boolean hasApproveIndicatorsInCurrentContext() {
-        try {
-            List<WebElement> contextNodes = driver.findElements(keplrConfirmTxContext);
-            if (!contextNodes.isEmpty()) {
-                return true;
-            }
-        } catch (Exception ignored) {
-        }
-
-        try {
-            List<WebElement> containers = driver.findElements(keplrApproveContainerByClass);
-            for (WebElement container : containers) {
-                if (container.isDisplayed()) {
-                    return true;
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        try {
-            Object hasShadowApprove = ((JavascriptExecutor) driver).executeScript(
-                    "const roots=[document];" +
-                            "const seen=new Set();" +
-                            "while(roots.length){" +
-                            "  const root=roots.shift();" +
-                            "  if(!root || seen.has(root)) continue;" +
-                            "  seen.add(root);" +
-                            "  if(root.querySelector('div.sc-gUAEMC.jxcvNv')) return true;" +
-                            "  const btns=root.querySelectorAll('button,[role=\"button\"],div');" +
-                            "  for(const b of btns){" +
-                            "    const t=(b.innerText||b.textContent||'').toLowerCase();" +
-                            "    if(t.trim()==='approve') return true;" +
-                            "  }" +
-                            "  const all=root.querySelectorAll('*');" +
-                            "  for(const el of all){ if(el.shadowRoot) roots.push(el.shadowRoot); }" +
-                            "}" +
-                            "return false;");
-            return Boolean.TRUE.equals(hasShadowApprove);
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private boolean approveCurrentPopup(String contextHandle, boolean expectWindowClose) {
-        boolean clickedAny = false;
-        int idleRoundsAfterClick = 0;
-        int unlockWaitSeconds = Integer.parseInt(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.unlock.wait.seconds", "120"));
-        long unlockDeadline = System.currentTimeMillis() + (unlockWaitSeconds * 1000L);
-
-        // Single popup can have multiple steps (Next -> Approve/Sign).
-        for (int i = 0; i < 10; i++) {
-            if (expectWindowClose && isWindowClosed(contextHandle)) {
-                break;
-            }
-
-            if (isWalletLocked()) {
-                System.out.println("[WalletModalPage] Keplr is locked. Enter password in popup and continue.");
-                waitForUnlockScreenToClear(unlockDeadline);
-            }
-
-            if (clickApproveFromConfirmTransactionLayout()) {
-                idleRoundsAfterClick = 0;
-                clickedAny = true;
-                System.out.println("[WalletModalPage] Clicked Keplr action from Confirm Transaction layout.");
-                WaitUtils.sleep(90);
-                continue;
-            }
-
-            if (clickApproveFromProvidedSelector()) {
-                idleRoundsAfterClick = 0;
-                clickedAny = true;
-                System.out.println("[WalletModalPage] Clicked Keplr action from provided selector: div.sc-gUAEMC.jxcvNv");
-                WaitUtils.sleep(90);
-                continue;
-            }
-
-            WebElement actionButton = findClickableActionButton();
-            if (actionButton == null) {
-                String shadowLabel = clickShadowDomActionButton();
-                if (shadowLabel != null) {
-                    idleRoundsAfterClick = 0;
-                    clickedAny = true;
-                    System.out.println("[WalletModalPage] Clicked Keplr action (shadow DOM): " + shadowLabel);
-                    WaitUtils.sleep(90);
-                    continue;
-                }
-
-                if (clickedAny) {
-                    idleRoundsAfterClick++;
-                    if (idleRoundsAfterClick >= 3) {
-                        break;
-                    }
-                }
-                WaitUtils.sleep(80);
-                continue;
-            }
-
-            idleRoundsAfterClick = 0;
-            String label = actionButton.getText().trim();
-            click(actionButton);
-            clickedAny = true;
-            System.out.println("[WalletModalPage] Clicked Keplr action: " + (label.isEmpty() ? "<no-label>" : label));
-
-            WaitUtils.sleep(90);
-            if (expectWindowClose && isWindowClosed(contextHandle)) {
-                break;
-            }
-        }
-
-        return clickedAny;
-    }
+    // =========================================================================
+    // UNLOCK helpers
+    // =========================================================================
 
     private boolean isWalletLocked() {
         try {
             List<WebElement> passwordInputs = driver.findElements(keplrPasswordInput);
             for (WebElement input : passwordInputs) {
-                if (input.isDisplayed()) {
-                    return true;
-                }
+                if (input.isDisplayed()) return true;
             }
             return hasPasswordFieldInShadowDom();
         } catch (NoSuchWindowException e) {
@@ -457,329 +652,236 @@ public class WalletModalPage {
         }
     }
 
-    private void waitForUnlockScreenToClear(long deadlineMillis) {
-        while (System.currentTimeMillis() < deadlineMillis) {
-            if (isCurrentWindowClosed()) {
-                return;
-            }
-            if (!isWalletLocked()) {
-                return;
-            }
-            WaitUtils.sleep(250);
-        }
-        throw new RuntimeException("Keplr unlock screen did not clear in time. Enter password and click Unlock in popup.");
-    }
-
-    private WebElement findClickableActionButton() {
-        List<WebElement> buttons = driver.findElements(keplrActionButton);
-        for (WebElement button : buttons) {
-            if (button.isDisplayed() && button.isEnabled()) {
-                return button;
-            }
-        }
-        return null;
-    }
-
-    private boolean clickApproveFromProvidedSelector() {
-        try {
-            List<WebElement> containers = driver.findElements(keplrApproveContainerByClass);
-            for (WebElement container : containers) {
-                if (!container.isDisplayed()) {
-                    continue;
-                }
-
-                // Prefer explicit "Approve" child element inside container.
-                List<WebElement> approveNodes = container.findElements(keplrApproveButtonInContainer);
-                for (WebElement approveNode : approveNodes) {
-                    if (approveNode.isDisplayed() && approveNode.isEnabled()) {
-                        click(approveNode);
-                        return true;
-                    }
-                }
-
-                // Fallback: click the container itself if child is not discoverable.
-                click(container);
-                return true;
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    private boolean clickApproveFromConfirmTransactionLayout() {
-        try {
-            List<WebElement> contexts = driver.findElements(keplrConfirmTxContext);
-            if (contexts.isEmpty()) {
-                // Even if context text isn't resolved due dynamic nodes, still try explicit approve button.
-                List<WebElement> approveButtons = driver.findElements(keplrApproveTextButton);
-                for (WebElement button : approveButtons) {
-                    if (button.isDisplayed() && button.isEnabled()) {
-                        click(button);
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            for (WebElement context : contexts) {
-                if (!context.isDisplayed()) {
-                    continue;
-                }
-
-                // Prefer approve nodes inside the same visual context.
-                List<WebElement> approveInside = context.findElements(By.xpath(
-                        ".//*[self::button or @role='button' or self::div][not(@disabled) and " +
-                                "(normalize-space()='Approve' or .//*[normalize-space()='Approve'] or " +
-                                "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), ' approve'))]"));
-                for (WebElement approve : approveInside) {
-                    if (approve.isDisplayed() && approve.isEnabled()) {
-                        click(approve);
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    private boolean isLikelyKeplrContext() {
-        try {
-            String currentUrl = driver.getCurrentUrl();
-            if (currentUrl != null && currentUrl.startsWith("chrome-extension://")) {
-                return true;
-            }
-        } catch (Exception ignored) {
-        }
-
-        try {
-            String title = driver.getTitle();
-            return title != null && title.toLowerCase().contains("keplr");
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
     private boolean hasPasswordFieldInShadowDom() {
         try {
             Object result = ((JavascriptExecutor) driver).executeScript(
-                    "const roots=[document];" +
-                            "const seen=new Set();" +
-                            "while(roots.length){" +
-                            "  const root=roots.shift();" +
-                            "  if(!root || seen.has(root)) continue;" +
-                            "  seen.add(root);" +
-                            "  const input=root.querySelector('input[type=\"password\"]');" +
-                            "  if(input) return true;" +
-                            "  const all=root.querySelectorAll('*');" +
-                            "  for(const el of all){ if(el.shadowRoot) roots.push(el.shadowRoot); }" +
-                            "}" +
-                            "return false;");
+                    "var roots=[document];" +
+                    "var seen=[];" +
+                    "while(roots.length){" +
+                    "  var root=roots.shift();" +
+                    "  if(!root || seen.indexOf(root)>=0) continue;" +
+                    "  seen.push(root);" +
+                    "  var input=root.querySelector('input[type=\"password\"]');" +
+                    "  if(input) return true;" +
+                    "  var all=root.querySelectorAll('*');" +
+                    "  for(var i=0;i<all.length;i++){ if(all[i].shadowRoot) roots.push(all[i].shadowRoot); }" +
+                    "}" +
+                    "return false;");
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
             return false;
         }
     }
 
-    private String clickShadowDomActionButton() {
-        try {
-            Object result = ((JavascriptExecutor) driver).executeScript(
-                    "const include=['unlock','next','approve','connect','confirm','sign','allow','grant'];" +
-                    "const exclude=['reject','cancel','deny','close'];" +
-                    "const roots=[document];" +
-                    "const seen=new Set();" +
-                    "const isVisible=(el)=>{" +
-                    "  if(!el) return false;" +
-                    "  const s=getComputedStyle(el);" +
-                    "  if(s.visibility==='hidden' || s.display==='none') return false;" +
-                    "  const r=el.getBoundingClientRect();" +
-                    "  return r.width>0 && r.height>0;" +
-                    "};" +
-                    "while(roots.length){" +
-                    "  const root=roots.shift();" +
-                    "  if(!root || seen.has(root)) continue;" +
-                    "  seen.add(root);" +
-                    "  const txCtx = root.querySelector('*');" +
-                    "  if(txCtx){" +
-                    "    const allNodes = root.querySelectorAll('*');" +
-                    "    let hasConfirm=false; let hasMsg=false;" +
-                    "    for(const n of allNodes){" +
-                    "      const t=(n.innerText||n.textContent||'').toLowerCase();" +
-                    "      if(!hasConfirm && t.includes('confirm transaction')) hasConfirm=true;" +
-                    "      if(!hasMsg && t.includes('msgadddid')) hasMsg=true;" +
-                    "      if(hasConfirm && hasMsg) break;" +
-                    "    }" +
-                    "    if(hasConfirm && hasMsg){" +
-                    "      for(const n of allNodes){" +
-                    "        const raw=(n.innerText||n.textContent||'').trim();" +
-                    "        const t=raw.toLowerCase();" +
-                    "        if((n.tagName==='BUTTON' || n.getAttribute('role')==='button' || n.tagName==='DIV') && t==='approve' && isVisible(n)){" +
-                    "          n.click(); return raw || 'approve';" +
-                    "        }" +
-                    "      }" +
-                    "    }" +
-                    "  }" +
-                    "  const approveContainer=root.querySelector('div.sc-gUAEMC.jxcvNv');" +
-                    "  if(approveContainer && isVisible(approveContainer)){" +
-                    "    const btn=approveContainer.querySelector('button,[role=\"button\"],div');" +
-                    "    if(btn && isVisible(btn)){ btn.click(); return (btn.innerText||btn.textContent||'approve').trim(); }" +
-                    "    approveContainer.click(); return 'approve-container';" +
-                    "  }" +
-                    "  const candidates=root.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"],input[type=\"button\"]');" +
-                    "  for(const el of candidates){" +
-                    "    const raw=(el.innerText||el.textContent||el.value||el.getAttribute('aria-label')||'').trim();" +
-                    "    const txt=raw.toLowerCase();" +
-                    "    if(!txt) continue;" +
-                            "    if(exclude.some(w=>txt.includes(w))) continue;" +
-                            "    if(!include.some(w=>txt.includes(w))) continue;" +
-                            "    if(el.disabled || el.getAttribute('disabled')!==null) continue;" +
-                            "    if(!isVisible(el)) continue;" +
-                            "    el.click();" +
-                            "    return raw;" +
-                            "  }" +
-                            "  const all=root.querySelectorAll('*');" +
-                            "  for(const el of all){ if(el.shadowRoot) roots.push(el.shadowRoot); }" +
-                            "}" +
-                            "return null;");
-            return result == null ? null : result.toString();
-        } catch (Exception e) {
-            return null;
-        }
-    }
+    private boolean attemptAutoUnlockIfLocked() {
+        if (!autoUnlockEnabled) return false;
+        String password = resolveKeplrPassword();
+        if (password == null || password.isEmpty()) return false;
 
-    private boolean attemptNativeApproveFallback(int waitSeconds) {
-        boolean enableNativeFallback = Boolean.parseBoolean(
-                com.verana.utils.DriverManager.getConfig().getProperty("keplr.native.approve.fallback", "true"));
-        if (!enableNativeFallback) {
-            return false;
+        if (enterPasswordInVisibleInput(password)) {
+            System.out.println("[Keplr] Auto-unlock: entered password in visible input.");
+            return true;
         }
-
-        long deadline = System.currentTimeMillis() + (Math.max(1, waitSeconds) * 1000L);
-        while (System.currentTimeMillis() < deadline) {
-            if (clickApproveInKeplrWindow()) {
-                return true;
-            }
-            WaitUtils.sleep(250);
+        if (enterPasswordInShadowDom(password)) {
+            System.out.println("[Keplr] Auto-unlock: entered password in shadow DOM.");
+            return true;
         }
         return false;
     }
 
-    private boolean clickApproveInKeplrWindow() {
+    private boolean enterPasswordInVisibleInput(String password) {
         try {
-            // Find Chrome window containing "Keplr" (or smallest popup-like window) and click near
-            // bottom-right where Approve is shown.
-            String script =
-                    "set didClick to false\n" +
-                            "set foundProcess to false\n" +
-                            "tell application \"System Events\"\n" +
-                            "  set candidateProcesses to {\"Google Chrome\", \"Chrome\"}\n" +
-                            "  repeat with pname in candidateProcesses\n" +
-                            "    if exists process (contents of pname) then\n" +
-                            "      set foundProcess to true\n" +
-                            "      tell process (contents of pname)\n" +
-                            "        set frontmost to true\n" +
-                            "        set targetWindow to missing value\n" +
-                            "        repeat with w in windows\n" +
-                            "          set wname to \"\"\n" +
-                            "          set wSize to 0\n" +
-                            "          set hSize to 0\n" +
-                            "          try\n" +
-                            "            set wname to name of w\n" +
-                            "          end try\n" +
-                            "          try\n" +
-                            "            set {wSize, hSize} to size of w\n" +
-                            "          end try\n" +
-                            "          if wname contains \"Keplr\" then\n" +
-                            "            set targetWindow to w\n" +
-                            "            exit repeat\n" +
-                            "          end if\n" +
-                            "          if targetWindow is missing value and wSize > 250 and wSize < 700 and hSize > 350 and hSize < 900 then\n" +
-                            "            set targetWindow to w\n" +
-                            "          end if\n" +
-                            "        end repeat\n" +
-                            "        if targetWindow is not missing value then\n" +
-                            "          set {xPos, yPos} to position of targetWindow\n" +
-                            "          set {wSize, hSize} to size of targetWindow\n" +
-                            "          set clickX to (xPos + (wSize * 3 / 4))\n" +
-                            "          set clickY to (yPos + hSize - 36)\n" +
-                            "          click at {clickX, clickY}\n" +
-                            "          delay 0.08\n" +
-                            "          key code 36\n" +
-                            "          set didClick to true\n" +
-                            "        end if\n" +
-                            "      end tell\n" +
-                            "      if didClick then exit repeat\n" +
-                            "    end if\n" +
-                            "  end repeat\n" +
-                            "end tell\n" +
-                            "if didClick then\n" +
-                            "  return \"clicked\"\n" +
-                            "else if foundProcess then\n" +
-                            "  return \"no_window\"\n" +
-                            "else\n" +
-                            "  return \"no_process\"\n" +
-                            "end if";
+            List<WebElement> inputs = driver.findElements(keplrPasswordInput);
+            for (WebElement input : inputs) {
+                if (!input.isDisplayed() || !input.isEnabled()) continue;
 
-            Process clickProcess = new ProcessBuilder("osascript", "-e", script).start();
-            clickProcess.waitFor();
+                try { input.click(); } catch (Exception ignored) {}
 
-            String output = new String(clickProcess.getInputStream().readAllBytes()).trim().toLowerCase();
-            boolean clicked = "clicked".equals(output);
-            if (clicked) {
-                System.out.println(
-                        "[WalletModalPage] Native fallback attempted: clicked Keplr window Approve area and pressed Enter.");
-                WaitUtils.sleep(300);
+                try {
+                    ((JavascriptExecutor) driver).executeScript(
+                            "var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;" +
+                            "nativeSetter.call(arguments[0],'');" +
+                            "arguments[0].dispatchEvent(new Event('input',{bubbles:true}));" +
+                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",
+                            input);
+                } catch (Exception ignored) {
+                    try { input.clear(); } catch (Exception ignored2) {}
+                }
+
+                input.sendKeys(password);
+
+                try {
+                    ((JavascriptExecutor) driver).executeScript(
+                            "arguments[0].dispatchEvent(new Event('input',{bubbles:true}));" +
+                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",
+                            input);
+                } catch (Exception ignored) {}
+
+                try {
+                    List<WebElement> unlockButtons = driver.findElements(keplrUnlockButton);
+                    for (WebElement button : unlockButtons) {
+                        if (button.isDisplayed() && button.isEnabled()) {
+                            safeClick(button);
+                            return true;
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                input.sendKeys(Keys.ENTER);
+                return true;
             }
-            if ("no_process".equals(output)) {
-                System.out.println("[WalletModalPage] Native fallback: Chrome process not found via AppleScript.");
-            } else if ("no_window".equals(output)) {
-                System.out.println("[WalletModalPage] Native fallback: Chrome found but Keplr-like window not found yet.");
-            }
-            return clicked;
-        } catch (Exception e) {
-            System.out.println("[WalletModalPage] Native approve fallback unavailable: " + e.getMessage());
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private boolean enterPasswordInShadowDom(String password) {
+        try {
+            Object result = ((JavascriptExecutor) driver).executeScript(
+                    "var pass = arguments[0];" +
+                    "var roots=[document];" +
+                    "var seen=[];" +
+                    "var isVisible=function(el){" +
+                    "  if(!el) return false;" +
+                    "  var s=getComputedStyle(el);" +
+                    "  if(s.visibility==='hidden' || s.display==='none') return false;" +
+                    "  var r=el.getBoundingClientRect();" +
+                    "  return r.width>0 && r.height>0;" +
+                    "};" +
+                    "var setReactValue=function(input, val){" +
+                    "  try{" +
+                    "    var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;" +
+                    "    nativeSetter.call(input, val);" +
+                    "  } catch(e){ input.value=val; }" +
+                    "  input.dispatchEvent(new Event('input',{bubbles:true}));" +
+                    "  input.dispatchEvent(new Event('change',{bubbles:true}));" +
+                    "};" +
+                    "while(roots.length){" +
+                    "  var root=roots.shift();" +
+                    "  if(!root || seen.indexOf(root)>=0) continue;" +
+                    "  seen.push(root);" +
+                    "  var input=root.querySelector('input[type=\"password\"]');" +
+                    "  if(input && isVisible(input)){" +
+                    "    input.focus();" +
+                    "    setReactValue(input,'');" +
+                    "    setReactValue(input,pass);" +
+                    "    var btns=root.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]');" +
+                    "    for(var i=0;i<btns.length;i++){" +
+                    "      var t=(btns[i].innerText||btns[i].textContent||btns[i].value||'').toLowerCase();" +
+                    "      if((t.indexOf('unlock')>=0||t.indexOf('sign in')>=0||t.indexOf('login')>=0||t.indexOf('continue')>=0||t.indexOf('next')>=0) && !btns[i].disabled && isVisible(btns[i])){" +
+                    "        btns[i].click(); return true;" +
+                    "      }" +
+                    "    }" +
+                    "    var evt=new KeyboardEvent('keydown',{key:'Enter',code:'Enter',which:13,keyCode:13,bubbles:true});" +
+                    "    input.dispatchEvent(evt);" +
+                    "    return true;" +
+                    "  }" +
+                    "  var all=root.querySelectorAll('*');" +
+                    "  for(var i=0;i<all.length;i++){ if(all[i].shadowRoot) roots.push(all[i].shadowRoot); }" +
+                    "}" +
+                    "return false;",
+                    password);
+            return Boolean.TRUE.equals(result);
+        } catch (Exception ignored) {
             return false;
         }
     }
 
-    private void click(WebElement element) {
+    private String resolveKeplrPassword() {
+        if (cachedKeplrPassword != null) return cachedKeplrPassword;
+
+        String envName = (autoUnlockEnvVar == null || autoUnlockEnvVar.isBlank()) ? "KEPLR_PASSWORD" : autoUnlockEnvVar;
+        String value = System.getenv(envName);
+        if (value == null || value.trim().isEmpty()) {
+            value = autoUnlockConfigPassword;
+        }
+
+        if (value == null || value.trim().isEmpty()) {
+            if (!loggedPasswordMissing) {
+                loggedPasswordMissing = true;
+                System.out.println("[Keplr] Auto-unlock enabled but no password. Set env '" + envName + "' or config 'keplr.password'.");
+            }
+            return null;
+        }
+
+        cachedKeplrPassword = value.trim();
+        if (!loggedPasswordLoaded) {
+            loggedPasswordLoaded = true;
+            System.out.println("[Keplr] Password loaded from " +
+                    ((System.getenv(envName) != null && !System.getenv(envName).trim().isEmpty()) ? ("env " + envName) : "config keplr.password") + ".");
+        }
+        return cachedKeplrPassword;
+    }
+
+    // =========================================================================
+    // UTILITY helpers
+    // =========================================================================
+
+    private void safeClick(WebElement element) {
         try {
             element.click();
         } catch (Exception clickError) {
             try {
-                new Actions(driver)
-                        .moveToElement(element)
-                        .pause(Duration.ofMillis(60))
-                        .click()
-                        .perform();
+                new Actions(driver).moveToElement(element).click().perform();
             } catch (Exception actionsError) {
                 ((JavascriptExecutor) driver).executeScript("arguments[0].click();", element);
             }
         }
     }
 
-    private boolean isPopupClosed() {
+    private void switchBackTo(String handle) {
         try {
-            return driver.getWindowHandles().size() == 1;
-        } catch (NoSuchWindowException e) {
-            return true;
+            if (driver.getWindowHandles().contains(handle)) {
+                driver.switchTo().window(handle);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void waitForWindowToClose(String handle, int seconds) {
+        long deadline = System.currentTimeMillis() + (seconds * 1000L);
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (!driver.getWindowHandles().contains(handle)) return;
+            } catch (Exception e) {
+                return;
+            }
+            WaitUtils.sleep(200);
         }
     }
 
-    private boolean isWindowClosed(String handle) {
+    private void dumpPageDiagnostics() {
         try {
-            return !driver.getWindowHandles().contains(handle);
-        } catch (NoSuchWindowException e) {
-            return true;
-        }
-    }
+            String url = driver.getCurrentUrl();
+            String title = driver.getTitle();
+            System.out.println("[Keplr] DIAGNOSTIC - URL: " + url);
+            System.out.println("[Keplr] DIAGNOSTIC - Title: " + title);
 
-    private boolean isCurrentWindowClosed() {
-        try {
-            driver.getTitle();
-            return false;
-        } catch (NoSuchWindowException e) {
-            return true;
+            Object buttonsInfo = ((JavascriptExecutor) driver).executeScript(
+                    "var result = [];" +
+                    "var allEls = document.querySelectorAll('button, [role=\"button\"], input[type=\"submit\"], a');" +
+                    "for (var i = 0; i < allEls.length; i++) {" +
+                    "  var el = allEls[i];" +
+                    "  var txt = (el.innerText || el.textContent || el.value || '').trim();" +
+                    "  var rect = el.getBoundingClientRect();" +
+                    "  var visible = rect.width > 0 && rect.height > 0;" +
+                    "  if (txt) result.push(el.tagName + ' text=\"' + txt.substring(0,50) + '\" visible=' + visible + ' disabled=' + el.disabled);" +
+                    "}" +
+                    "return result.join('\\n');");
+            System.out.println("[Keplr] DIAGNOSTIC - Buttons:\n" + buttonsInfo);
+
+            Object bodyText = ((JavascriptExecutor) driver).executeScript(
+                    "return (document.body ? document.body.innerText : '').substring(0, 500);");
+            System.out.println("[Keplr] DIAGNOSTIC - Page text:\n" + bodyText);
+
+            try {
+                java.io.File screenshotFile = ((org.openqa.selenium.TakesScreenshot) driver).getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+                java.io.File dest = new java.io.File(System.getProperty("user.dir"), "keplr_debug_screenshot.png");
+                java.nio.file.Files.copy(screenshotFile.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[Keplr] DIAGNOSTIC - Screenshot: " + dest.getAbsolutePath());
+            } catch (Exception screenshotErr) {
+                System.out.println("[Keplr] DIAGNOSTIC - Screenshot failed: " + screenshotErr.getMessage());
+            }
+        } catch (Exception e) {
+            System.out.println("[Keplr] DIAGNOSTIC failed: " + e.getMessage());
         }
     }
 }
