@@ -123,27 +123,18 @@ public class VeranaAutomationTest {
         // STEP 5: Submit the form (clicks the inner "Add DID" confirm button)
         System.out.println("[Test] STEP 5: Submitting Add DID form...");
         manageDIDsPage.submitDIDForm();
-        System.out.println("[Test] STEP 5 DONE: Form submitted. Waiting 5s for Keplr to register transaction...");
-        WaitUtils.sleep(5000);
+        System.out.println("[Test] STEP 5 DONE: Form submitted.");
 
-        // STEP 6: Click Keplr extension icon in toolbar, then click Approve.
-        //
-        // Keplr v0.13.x shows "Confirm Transaction" in the browser-action popup
-        // (the dropdown when you click the Keplr icon in the toolbar corner).
-        // This popup is NOT a browser window — Selenium can't access it.
-        // We use Robot (OS-level mouse) to click the icon, then click Approve.
-        System.out.println("[Test] STEP 6: Clicking Keplr icon → Approve transaction...");
-        String didPageHandle = driver.getWindowHandle();
-        boolean approvalHandled = walletModalPage.approveKeplrTransaction(didPageHandle, 30);
-        System.out.println("[Test] STEP 6 DONE: Keplr approval " + (approvalHandled ? "clicked." : "not detected."));
+        // STEP 6: Approve Keplr transaction
+        // Wait for Keplr popup, switch to it, click Approve, switch back
+        System.out.println("[Test] STEP 6: Waiting for Keplr popup and clicking Approve...");
+        WaitUtils.sleep(3000); // Give Keplr time to register the transaction
+        boolean approved = walletModalPage.approveKeplrTransaction(15);
+        System.out.println("[Test] STEP 6 DONE: Keplr approval " + (approved ? "succeeded." : "not detected."));
 
         // STEP 7: Wait for transaction to confirm on-chain
         System.out.println("[Test] STEP 7: Waiting for transaction success confirmation...");
         boolean success = manageDIDsPage.waitForTransactionSuccess(TX_SUCCESS_WAIT_SECONDS);
-        if (!success && !approvalHandled) {
-            manageDIDsPage.clickFinalAddDIDIfPresent();
-            success = manageDIDsPage.waitForTransactionSuccess(TX_SUCCESS_WAIT_SECONDS);
-        }
         Assert.assertTrue(success, "DID transaction did not show successful confirmation.");
         System.out.println("[Test] STEP 7 DONE: Transaction confirmed.");
 

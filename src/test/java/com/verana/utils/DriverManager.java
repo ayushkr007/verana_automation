@@ -55,6 +55,7 @@ public class DriverManager {
         options.setExperimentalOption("useAutomationExtension", false);
 
         // General Chrome flags
+        options.addArguments("--no-sandbox");
         options.addArguments("--start-maximized");
         options.addArguments("--disable-popup-blocking");
         options.addArguments("--disable-dev-shm-usage");
