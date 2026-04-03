@@ -1,50 +1,54 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+# Launch Chrome with the selenium-keplr-profile (Profile 1) + Keplr extension loaded.
+# Use this to manually set up Keplr (import wallet) ONCE before running tests.
+#
+# Steps:
+# 1. Close ALL Chrome windows first
+# 2. Run this script: ./launch_chrome.sh
+# 3. Keplr will open — click "Import existing wallet" and set up your wallet
+# 4. Once done, close Chrome
+# 5. Run: mvn test
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$ROOT_DIR/config.properties"
+USER_DATA_DIR="$HOME/selenium-keplr-profile"
+PROFILE_DIR="Profile 1"
+KEPLR_EXT_DIR="$USER_DATA_DIR/$PROFILE_DIR/Extensions/dmkamcknogkgcdfhhbddcghachkejeap"
 
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Missing config file: $CONFIG_FILE"
+# Auto-detect Chrome binary per OS
+OS="$(uname -s)"
+case "$OS" in
+  Darwin)
+    CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    ;;
+  Linux)
+    CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || echo "google-chrome")"
+    ;;
+  *)
+    echo "Unsupported OS: $OS. Please run Chrome manually."
+    exit 1
+    ;;
+esac
+
+if [ ! -f "$CHROME" ] && [ "$OS" = "Darwin" ]; then
+  echo "ERROR: Chrome not found at $CHROME"
   exit 1
 fi
 
-get_prop() {
-  local key="$1"
-  sed -n "s/^${key}=//p" "$CONFIG_FILE" | head -n 1
-}
-
-USER_DATA_DIR="$(get_prop "chrome.user.data.dir")"
-PROFILE_DIR="$(get_prop "chrome.profile.directory")"
-CHROME_BIN="$(get_prop "chrome.binary.path")"
-
-if [[ -z "$USER_DATA_DIR" ]]; then
-  echo "chrome.user.data.dir is empty in config.properties"
-  exit 1
-fi
-if [[ -z "$PROFILE_DIR" ]]; then
-  PROFILE_DIR="Default"
-fi
-if [[ -z "$CHROME_BIN" ]]; then
-  CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# Auto-detect latest Keplr version
+if [ -d "$KEPLR_EXT_DIR" ]; then
+  KEPLR_VERSION=$(ls "$KEPLR_EXT_DIR" | sort -V | tail -1)
+  EXT_FLAG="--load-extension=$KEPLR_EXT_DIR/$KEPLR_VERSION"
+  echo "Loading Keplr extension: $KEPLR_EXT_DIR/$KEPLR_VERSION"
+else
+  EXT_FLAG=""
+  echo "WARNING: Keplr extension not found at $KEPLR_EXT_DIR"
+  echo "The extension will be installed when you set up Keplr in Chrome."
 fi
 
-mkdir -p "$USER_DATA_DIR"
-
-cat <<EOF
-Launching Chrome with your Selenium profile:
-  user-data-dir: $USER_DATA_DIR
-  profile      : $PROFILE_DIR
-
-Use this for one-time setup:
-1) Install Keplr extension.
-2) Import/unlock your wallet.
-3) Verify VNA balance on Verana network.
-4) Close Chrome before running mvn test.
-EOF
-
-"$CHROME_BIN" \
+"$CHROME" \
   --user-data-dir="$USER_DATA_DIR" \
   --profile-directory="$PROFILE_DIR" \
+  $EXT_FLAG \
   --no-first-run \
-  --no-default-browser-check
+  --no-default-browser-check \
+  --disable-default-apps \
+  "https://app.testnet.verana.network/dashboard"

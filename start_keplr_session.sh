@@ -14,9 +14,15 @@ get_prop() {
   sed -n "s/^${key}=//p" "$CONFIG_FILE" | head -n 1
 }
 
-USER_DATA_DIR="$(get_prop "chrome.user.data.dir")"
+# Resolve ~ to home directory
+resolve_path() {
+  local p="$1"
+  echo "${p/#\~/$HOME}"
+}
+
+USER_DATA_DIR="$(resolve_path "$(get_prop "chrome.user.data.dir")")"
 PROFILE_DIR="$(get_prop "chrome.profile.directory")"
-CHROME_BIN="$(get_prop "chrome.binary.path")"
+CHROME_BIN="$(resolve_path "$(get_prop "chrome.binary.path")")"
 DEBUGGER_ADDRESS="$(get_prop "chrome.debugger.address")"
 DEBUG_START_WAIT_SECONDS="$(get_prop "chrome.debug.start.wait.seconds")"
 
@@ -27,8 +33,21 @@ fi
 if [[ -z "$PROFILE_DIR" ]]; then
   PROFILE_DIR="Default"
 fi
+
+# Auto-detect Chrome binary if not set
 if [[ -z "$CHROME_BIN" ]]; then
-  CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  if [[ "$(uname)" == "Darwin" ]]; then
+    CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  elif [[ -f "/usr/bin/google-chrome" ]]; then
+    CHROME_BIN="/usr/bin/google-chrome"
+  elif [[ -f "/usr/bin/google-chrome-stable" ]]; then
+    CHROME_BIN="/usr/bin/google-chrome-stable"
+  elif [[ -f "/usr/bin/chromium-browser" ]]; then
+    CHROME_BIN="/usr/bin/chromium-browser"
+  else
+    echo "ERROR: Chrome binary not found. Set chrome.binary.path in config.properties."
+    exit 1
+  fi
 fi
 if [[ -z "$DEBUGGER_ADDRESS" ]]; then
   DEBUGGER_ADDRESS="127.0.0.1:9222"
@@ -45,6 +64,12 @@ fi
 if lsof -i "tcp:${DEBUG_PORT}" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
   echo "Debug Chrome session already running at ${DEBUGGER_ADDRESS}."
   exit 0
+fi
+
+if [[ ! -f "$CHROME_BIN" ]]; then
+  echo "ERROR: Chrome not found at: $CHROME_BIN"
+  echo "Install Google Chrome or set chrome.binary.path in config.properties."
+  exit 1
 fi
 
 mkdir -p "$USER_DATA_DIR"

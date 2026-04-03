@@ -125,13 +125,13 @@ public class DashboardPage {
      * The header button changes from "Connect" to the wallet address.
      */
     public void assertWalletConnected() {
-        WaitUtils.sleep(2000); // Brief pause for UI to update
+        WaitUtils.sleep(500);
 
         boolean connected = isWalletConnected();
         if (!connected) {
             throw new AssertionError("[DashboardPage] ASSERTION FAILED: Wallet is still NOT connected after flow!");
         }
-        System.out.println("[DashboardPage] ✅ Wallet connection VERIFIED.");
+        System.out.println("[DashboardPage] Wallet connection VERIFIED.");
     }
 
     /**
@@ -139,7 +139,6 @@ public class DashboardPage {
      * Falls back to the dashboard card link if the sidebar link isn't present.
      */
     public void navigateToManageDIDs() {
-        WaitUtils.sleep(1500);
         try {
             WebElement sidebarLink = wait.waitForClickable(manageDIDsLink, 15);
             sidebarLink.click();

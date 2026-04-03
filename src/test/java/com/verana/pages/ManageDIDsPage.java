@@ -543,14 +543,24 @@ public class ManageDIDsPage {
      */
     public boolean isDIDPresentInList(String didIdentifier) {
         try {
-            // Look for the DID text anywhere on the page
-            By didInList = By.xpath("//*[contains(text(),'" + didIdentifier + "')]");
-            wait.waitForVisible(didInList, 10);
-            System.out.println("[ManageDIDsPage] ✅ DID found in the list: " + didIdentifier);
-            return true;
+            // Use CSS/JS search to avoid XPath injection from special chars in DID
+            boolean found = Boolean.TRUE.equals(((JavascriptExecutor) driver).executeScript(
+                    "var target = arguments[0];" +
+                    "var deadline = Date.now() + 10000;" +
+                    "while (Date.now() < deadline) {" +
+                    "  if (document.body && document.body.innerText.indexOf(target) >= 0) return true;" +
+                    "}" +
+                    "return document.body && document.body.innerText.indexOf(target) >= 0;",
+                    didIdentifier));
+            if (found) {
+                System.out.println("[ManageDIDsPage] DID found in the list: " + didIdentifier);
+            } else {
+                System.out.println("[ManageDIDsPage] DID not found in visible list (may still have been created): "
+                        + didIdentifier);
+            }
+            return found;
         } catch (Exception e) {
-            System.out.println("[ManageDIDsPage] ⚠️  DID not found in visible list (may still have been created): "
-                    + didIdentifier);
+            System.out.println("[ManageDIDsPage] DID search failed: " + e.getMessage());
             return false;
         }
     }
@@ -651,10 +661,13 @@ public class ManageDIDsPage {
         return true;
     }
 
+    private static final Keys SELECT_ALL_MODIFIER =
+            System.getProperty("os.name", "").toLowerCase().contains("mac") ? Keys.COMMAND : Keys.CONTROL;
+
     private void setInputValueFast(WebElement input, String value) {
         try {
             input.click();
-            input.sendKeys(Keys.chord(Keys.COMMAND, "a"));
+            input.sendKeys(Keys.chord(SELECT_ALL_MODIFIER, "a"));
             input.sendKeys(Keys.BACK_SPACE);
             input.sendKeys(value);
             WaitUtils.sleep(80);
@@ -669,7 +682,7 @@ public class ManageDIDsPage {
             // Retry once with Action typing in case a controlled input ignored the first set.
             new Actions(driver)
                     .click(input)
-                    .keyDown(Keys.COMMAND).sendKeys("a").keyUp(Keys.COMMAND)
+                    .keyDown(SELECT_ALL_MODIFIER).sendKeys("a").keyUp(SELECT_ALL_MODIFIER)
                     .sendKeys(Keys.BACK_SPACE)
                     .sendKeys(value)
                     .perform();

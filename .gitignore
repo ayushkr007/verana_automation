@@ -1,3 +1,12 @@
 target/
-.DS_Store
+*.class
 *.log
+.idea/
+*.iml
+.DS_Store
+keplr_debug_screenshot.png
+*.png
+config.properties
+.env
+reports/
+.vscode/

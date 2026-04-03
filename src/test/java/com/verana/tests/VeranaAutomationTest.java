@@ -14,7 +14,14 @@ import org.testng.annotations.Test;
 
 
 /**
- * Simple Verana DID flow after user signs in to Keplr manually.
+ * Verana DID registration automation.
+ *
+ * Flow:
+ * 1. Go to dashboard, sign in with Keplr
+ * 2. Navigate to DID page (/did)
+ * 3. Click "Add DID"
+ * 4. Fill DID identifier (unique each run), set 1 year period
+ * 5. Submit, approve Keplr transaction, wait for confirmation
  */
 public class VeranaAutomationTest {
 
@@ -23,26 +30,29 @@ public class VeranaAutomationTest {
     private ManageDIDsPage manageDIDsPage;
     private WalletModalPage walletModalPage;
 
-    private static final String DASHBOARD_URL = DriverManager.getConfig()
-            .getProperty("dashboard.url", "https://app.testnet.verana.network/dashboard");
-    private static final String DID_PAGE_URL = DriverManager.getConfig()
-            .getProperty("did.page.url", "https://app.testnet.verana.network/did");
-    private static final int TX_SUCCESS_WAIT_SECONDS = Integer.parseInt(
-            DriverManager.getConfig().getProperty("tx.success.wait.seconds", "90"));
-    private static final int DID_ADD_BUTTON_WAIT_SECONDS = Integer.parseInt(
-            DriverManager.getConfig().getProperty("did.add.button.wait.seconds", "6"));
-    private static final int KEPLR_UNLOCK_PREOPEN_SECONDS = Integer.parseInt(
-            DriverManager.getConfig().getProperty("keplr.unlock.preopen.seconds", "4"));
-    private static final boolean CLOSE_BROWSER_ON_FINISH = Boolean.parseBoolean(
-            DriverManager.getConfig().getProperty("close.browser.on.finish", "false"));
+    private String dashboardUrl;
+    private String didPageUrl;
+    private int keplrUnlockPreopenSeconds;
+    private boolean closeBrowserOnFinish;
+    private int txSuccessWaitSeconds;
+    private int didAddButtonWaitSeconds;
 
     private String generatedDID;
 
     @BeforeMethod
     public void setUp() {
         System.out.println("\n" + "=".repeat(60));
-        System.out.println("  Verana Automation - Starting Test");
+        System.out.println("  Verana DID Automation - Starting Test");
         System.out.println("=".repeat(60));
+
+        // Load config lazily to provide clear errors on missing config
+        java.util.Properties cfg = DriverManager.getConfig();
+        dashboardUrl = cfg.getProperty("dashboard.url", "https://app.testnet.verana.network/dashboard");
+        didPageUrl = cfg.getProperty("did.page.url", "https://app.testnet.verana.network/did");
+        keplrUnlockPreopenSeconds = Integer.parseInt(cfg.getProperty("keplr.unlock.preopen.seconds", "4"));
+        closeBrowserOnFinish = Boolean.parseBoolean(cfg.getProperty("close.browser.on.finish", "false"));
+        txSuccessWaitSeconds = Integer.parseInt(cfg.getProperty("tx.success.wait.seconds", "60"));
+        didAddButtonWaitSeconds = Integer.parseInt(cfg.getProperty("did.add.button.wait.seconds", "6"));
 
         driver = DriverManager.getDriver();
         dashboardPage = new DashboardPage(driver);
@@ -50,19 +60,27 @@ public class VeranaAutomationTest {
         walletModalPage = new WalletModalPage(driver);
 
         // Step 1: Wait for Keplr extension to load, then unlock it
-        WaitUtils.sleep(3000); // Give extension time to initialize
-        String keplrExtId = DriverManager.getConfig()
-                .getProperty("keplr.extension.id", "dmkamcknogkgcdfhhbddcghachkejeap").trim();
+        WaitUtils.sleep(3000);
+        String keplrExtId = cfg.getProperty("keplr.extension.id", "dmkamcknogkgcdfhhbddcghachkejeap").trim();
         String keplrPopupUrl = "chrome-extension://" + keplrExtId + "/popup.html";
         System.out.println("[setUp] STEP 1: Opening Keplr popup to unlock: " + keplrPopupUrl);
         driver.get(keplrPopupUrl);
-        WaitUtils.sleep(2000);
-        walletModalPage.tryAutoUnlockInOpenContexts(KEPLR_UNLOCK_PREOPEN_SECONDS);
-        System.out.println("[setUp] STEP 1 DONE: Keplr unlock attempted.");
+        // Wait for Keplr popup to fully render (extension pages can be slow)
+        WaitUtils.sleep(3000);
+
+        // Try to unlock — use a generous timeout since Keplr may need time to load
+        int unlockTimeout = Math.max(keplrUnlockPreopenSeconds, 8);
+        boolean unlocked = walletModalPage.tryAutoUnlockInOpenContexts(unlockTimeout);
+        if (!unlocked) {
+            System.out.println("[setUp] WARNING: Keplr auto-unlock may have failed. Trying once more...");
+            WaitUtils.sleep(2000);
+            unlocked = walletModalPage.tryAutoUnlockInOpenContexts(unlockTimeout);
+        }
+        System.out.println("[setUp] STEP 1 DONE: Keplr unlock " + (unlocked ? "succeeded." : "may have failed — check logs."));
 
         // Step 2: Navigate to dashboard
         System.out.println("[setUp] STEP 2: Navigating to dashboard...");
-        driver.get(DASHBOARD_URL);
+        driver.get(dashboardUrl);
         WaitUtils.sleep(2000);
         System.out.println("[setUp] STEP 2 DONE: On dashboard.");
 
@@ -74,9 +92,9 @@ public class VeranaAutomationTest {
             if (clicked) {
                 walletModalPage.selectKeplr();
                 WaitUtils.sleep(2000);
-                // Open Keplr in browser tab to approve connection (up to 3 actions: chain add, connect, approve)
+                // Approve connection (up to 3 actions: chain add, connect, approve)
                 int connected = walletModalPage.approveInKeplrPopup(3, 20);
-                System.out.println("[setUp] Keplr connection actions approved in browser tab: " + connected);
+                System.out.println("[setUp] Keplr connection actions approved: " + connected);
                 dashboardPage.assertWalletConnected();
                 System.out.println("[setUp] STEP 3 DONE: Wallet connected via Keplr.");
             } else {
@@ -86,6 +104,7 @@ public class VeranaAutomationTest {
             System.out.println("[setUp] STEP 3 DONE: Wallet already connected.");
         }
 
+        // Generate unique DID for this run
         generatedDID = DIDGenerator.generateSimpleDID();
         Assert.assertTrue(DIDGenerator.matchesAddDidRule(generatedDID),
                 "Generated DID does not match Verana add_did.go DID regex.");
@@ -98,8 +117,12 @@ public class VeranaAutomationTest {
 
         // STEP 1: Open DID page
         System.out.println("[Test] STEP 1: Opening DID page...");
-        openDidPage();
-        WaitUtils.sleep(1000);
+        driver.get(didPageUrl);
+        if (!manageDIDsPage.isAddDIDButtonVisible(didAddButtonWaitSeconds)) {
+            throw new AssertionError(
+                    "Add DID button is not visible on " + didPageUrl
+                            + ". Complete sign-up/sign-in and wallet connection first, then rerun.");
+        }
         System.out.println("[Test] STEP 1 DONE: " + driver.getCurrentUrl());
 
         // STEP 2: Click "Add DID" to open the form
@@ -123,42 +146,41 @@ public class VeranaAutomationTest {
         // STEP 5: Submit the form (clicks the inner "Add DID" confirm button)
         System.out.println("[Test] STEP 5: Submitting Add DID form...");
         manageDIDsPage.submitDIDForm();
+        WaitUtils.sleep(1000);
         System.out.println("[Test] STEP 5 DONE: Form submitted.");
 
         // STEP 6: Approve Keplr transaction
-        // Wait for Keplr popup, switch to it, click Approve, switch back
         System.out.println("[Test] STEP 6: Waiting for Keplr popup and clicking Approve...");
         WaitUtils.sleep(3000); // Give Keplr time to register the transaction
         boolean approved = walletModalPage.approveKeplrTransaction(15);
-        System.out.println("[Test] STEP 6 DONE: Keplr approval " + (approved ? "succeeded." : "not detected."));
+        Assert.assertTrue(approved, "Keplr transaction approval failed — popup may not have appeared or Approve button was not found.");
+        System.out.println("[Test] STEP 6 DONE: Keplr approval succeeded.");
 
-        // STEP 7: Wait for transaction to confirm on-chain
-        System.out.println("[Test] STEP 7: Waiting for transaction success confirmation...");
-        boolean success = manageDIDsPage.waitForTransactionSuccess(TX_SUCCESS_WAIT_SECONDS);
-        Assert.assertTrue(success, "DID transaction did not show successful confirmation.");
+        // STEP 7: Wait for transaction success
+        System.out.println("[Test] STEP 7: Waiting for transaction success...");
+        boolean success = manageDIDsPage.waitForTransactionSuccess(txSuccessWaitSeconds);
+        Assert.assertTrue(success, "Transaction success message was not detected within " + txSuccessWaitSeconds + " seconds.");
         System.out.println("[Test] STEP 7 DONE: Transaction confirmed.");
 
+        // STEP 8: Navigate back to DID page
+        System.out.println("[Test] STEP 8: Navigating back to DID page...");
+        driver.get(didPageUrl);
+        WaitUtils.sleep(2000);
+        System.out.println("[Test] STEP 8 DONE: On DID page: " + driver.getCurrentUrl());
+
         System.out.println("\n" + "=".repeat(60));
-        System.out.println("  TEST PASSED!  DID: " + generatedDID);
+        System.out.println("  TEST PASSED!");
+        System.out.println("  DID: " + generatedDID);
         System.out.println("=".repeat(60) + "\n");
     }
 
     @AfterMethod
     public void tearDown() {
-        if (CLOSE_BROWSER_ON_FINISH) {
+        if (closeBrowserOnFinish) {
             System.out.println("[Test] Tearing down — closing browser.");
             DriverManager.quitDriver();
         } else {
             System.out.println("[Test] Tearing down — keeping browser open (close.browser.on.finish=false).");
-        }
-    }
-
-    private void openDidPage() {
-        driver.get(DID_PAGE_URL);
-        if (!manageDIDsPage.isAddDIDButtonVisible(DID_ADD_BUTTON_WAIT_SECONDS)) {
-            throw new AssertionError(
-                    "Add DID button is not visible on " + DID_PAGE_URL
-                            + ". Complete sign-up/sign-in and wallet connection first, then rerun.");
         }
     }
 }
