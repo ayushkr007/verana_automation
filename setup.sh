@@ -64,7 +64,7 @@ if [ -z "$CURRENT_PASSWORD" ]; then
         grep -v "export KEPLR_PASSWORD=" "$PROFILE" > "$PROFILE.tmp"
         mv "$PROFILE.tmp" "$PROFILE"
     fi
-    echo "export KEPLR_PASSWORD='$KEPLR_PASSWORD'" >> "$PROFILE"
+    echo "export KEPLR_PASSWORD='$KEPLR_PASSWORD'" >> "$"
 
     # Also export for this session
     export KEPLR_PASSWORD
