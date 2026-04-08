@@ -11,7 +11,7 @@ fi
 
 get_prop() {
   local key="$1"
-  sed -n "s/^${key}=//p" "$CONFIG_FILE" | head -n 
+  sed -n "s/^${key}=//p" "$CONFIG_FILE" | head -n 1
 }
 
 # Resolve ~ to home directory
